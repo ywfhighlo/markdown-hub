@@ -1,0 +1,244 @@
+{
+  "name": "markdown-hub",
+  "displayName": "Markdown Hub",
+  "description": "Markdown文档转换的瑞士军刀。",
+  "version": "0.2.0",
+  "author": "余文锋 <909188787@qq.com>",
+  "publisher": "ywfhighlo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ywfhighlo/markdown-hub.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:markdown-hub.mdToDocx",
+    "onCommand:markdown-hub.mdToPdf",
+    "onCommand:markdown-hub.mdToHtml",
+    "onCommand:markdown-hub.officeToMd",
+    "onCommand:markdown-hub.diagramToPng",
+    "onCommand:markdown-hub.openTemplateSettings"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "markdown-hub.mdToDocx",
+        "title": "Convert to DOCX"
+      },
+      {
+        "command": "markdown-hub.mdToPdf",
+        "title": "Convert to PDF"
+      },
+      {
+        "command": "markdown-hub.mdToHtml",
+        "title": "Convert to HTML"
+      },
+      {
+        "command": "markdown-hub.mdToPptx",
+        "title": "Convert to PPTX"
+      },
+      {
+        "command": "markdown-hub.officeToMd",
+        "title": "Convert to Markdown"
+      },
+      {
+        "command": "markdown-hub.diagramToPng",
+        "title": "Convert to PNG"
+      },
+      {
+        "command": "markdown-hub.openTemplateSettings",
+        "title": "Template Settings..."
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.mdToDocx",
+          "group": "2_conversion@1"
+        },
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.mdToPdf",
+          "group": "2_conversion@2"
+        },
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.mdToHtml",
+          "group": "2_conversion@3"
+        },
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.mdToPptx",
+          "group": "2_conversion@4"
+        },
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.openTemplateSettings",
+          "group": "2_conversion@5"
+        },
+        {
+          "when": "resourceExtname == .docx || resourceExtname == .xlsx || resourceExtname == .ppt || resourceExtname == .pdf",
+          "command": "markdown-hub.officeToMd",
+          "group": "2_conversion@1"
+        },
+        {
+          "when": "resourceExtname == .svg || resourceExtname == .drawio",
+          "command": "markdown-hub.diagramToPng",
+          "group": "2_conversion@1"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.mdToDocx",
+          "group": "2_conversion@1"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.mdToPdf",
+          "group": "2_conversion@2"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.mdToHtml",
+          "group": "2_conversion@3"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.mdToPptx",
+          "group": "2_conversion@4"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.openTemplateSettings",
+          "group": "2_conversion@7"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.officeToMd",
+          "group": "2_conversion@4"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.diagramToPng",
+          "group": "2_conversion@5"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Markdown Hub",
+      "properties": {
+        "markdown-hub.outputDirectory": {
+          "type": "string",
+          "default": "./converted_markdown_files",
+          "description": "Directory where converted files will be saved",
+          "scope": "window"
+        },
+        "markdown-hub.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "markdownDescription": "Path to Python executable. On Windows, this should typically be `python`. On macOS/Linux, it's often `python3`.",
+          "scope": "window"
+        },
+        "markdown-hub.useDocxTemplate": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Enable Template for DOCX**\n\nWhen enabled, DOCX conversion will use a template file.",
+          "scope": "window",
+          "order": 10
+        },
+        "markdown-hub.docxTemplatePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Path to DOCX Template**\n\nLeave empty to use the default template. Click the folder icon to browse for a template file.",
+          "scope": "window",
+          "order": 11
+        },
+        "markdown-hub.usePptxTemplate": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Enable Template for PPTX**\n\nWhen enabled, PPTX conversion will use a template file.",
+          "scope": "window",
+          "order": 12
+        },
+        "markdown-hub.pptxTemplatePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Path to PPTX Template**\n\nLeave empty to use the default template. Click the folder icon to browse for a template file.",
+          "scope": "window",
+          "order": 13
+        },
+        "markdown-hub.projectName": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Project Name**\n\nUsed in DOCX and PPTX templates.",
+          "scope": "window",
+          "order": 20
+        },
+        "markdown-hub.author": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Author Name**\n\nUsed in DOCX and PPTX templates.",
+          "scope": "window",
+          "order": 21
+        },
+        "markdown-hub.email": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Email Address**\n\nUsed in DOCX and PPTX templates.",
+          "scope": "window",
+          "order": 22
+        },
+        "markdown-hub.mobilephone": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Mobile Phone**\n\nUsed in DOCX and PPTX templates.",
+          "scope": "window",
+          "order": 23
+        },
+        "markdown-hub.promoteHeadings": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Promote Heading Levels**\n\nWhen enabled, shifts heading levels up by one (e.g., `## Chapter 1` becomes Heading 1 in the output). This treats `# Document Title` as a cover page title. Disable this if your document starts with `# Chapter 1` as the first chapter.",
+          "scope": "window",
+          "order": 30
+        },
+        "markdown-hub.popplerPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Path to Poppler installation directory**\n\nRequired for PDF to Markdown conversion on Windows. Provide the path to the Poppler `bin` directory (e.g., `C:\\path\\to\\poppler-23.08.0\\bin`).",
+          "scope": "window",
+          "order": 40
+        },
+        "markdown-hub.tesseractCmd": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Path or command for Tesseract-OCR**\n\nRequired for OCR when converting scanned PDFs. Can be a full path to `tesseract.exe` or just `tesseract` if it's in your system's PATH.",
+          "scope": "window",
+          "order": 50
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "install-deps": "npm install && pip3 install -r backend/requirements.txt",
+    "lint": "eslint src --ext ts",
+    "test": "npm run compile && node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "20.x",
+    "typescript": "^5.0.0",
+    "eslint": "^8.40.0",
+    "@typescript-eslint/parser": "^5.59.0",
+    "@typescript-eslint/eslint-plugin": "^5.59.0"
+  }
+} 
