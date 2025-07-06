@@ -3,6 +3,8 @@ node_modules/
 build/
 /out/
 arxml/
+bundled/
+converted_markdown_files/
 *.vsix
 npm-debug.log*
 yarn-debug.log*

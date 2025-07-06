@@ -31,3 +31,25 @@ package-lock.json
 tsconfig.json
 README.md
 DESIGN.md
+
+# 打包相关文件 - 排除打包脚本但保留打包结果
+scripts/
+install.bat
+install.sh
+Dockerfile
+docker-compose.yml
+INSTALL.md
+test_install.py
+.dockerignore
+
+# 保留打包的依赖（这些文件会被包含在扩展中）
+# !bundled/
+# !bundled/**
+# !bundled-launcher.js
+
+# 排除原始后端文件（使用打包后的版本）
+backend/
+!backend/templates/
+
+# 排除 Docker 和安装相关文件
+requirements*.txt
