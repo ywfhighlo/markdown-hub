@@ -1,6 +1,8 @@
 # Exclude development files and folders
 .vscode/
 node_modules/
+converted_markdown_files/
+bundled/
 .vscode-test/
 
 # Source code and test files that are compiled
