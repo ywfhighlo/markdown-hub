@@ -16,6 +16,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onView:explorer",
     "onCommand:markdown-hub.mdToDocx",
     "onCommand:markdown-hub.mdToPdf",
     "onCommand:markdown-hub.mdToHtml",
@@ -53,6 +54,38 @@
       {
         "command": "markdown-hub.openTemplateSettings",
         "title": "Template Settings..."
+      },
+      {
+        "command": "markdown-hub.batchMdToPdf",
+        "title": "Markdown批量转PDF"
+      },
+      {
+        "command": "markdown-hub.batchMdToDocx",
+        "title": "Markdown批量转DOCX"
+      },
+      {
+        "command": "markdown-hub.batchMdToPptx",
+        "title": "Markdown批量转PPTX"
+      },
+      {
+        "command": "markdown-hub.batchPdfToMd",
+        "title": "PDF批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.batchDocxToMd",
+        "title": "DOCX批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.batchPptxToMd",
+        "title": "PPTX批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.batchExcelToMd",
+        "title": "Excel批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.batchAllToMd",
+        "title": "All Files批量转Markdown"
       }
     ],
     "menus": {
@@ -126,6 +159,46 @@
           "when": "resourceIsFolder",
           "command": "markdown-hub.diagramToPng",
           "group": "2_conversion@5"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchMdToPdf",
+          "group": "4_md_batch@1"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchMdToDocx",
+          "group": "4_md_batch@2"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchMdToPptx",
+          "group": "4_md_batch@3"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchPdfToMd",
+          "group": "3_batch@1"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchDocxToMd",
+          "group": "3_batch@2"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchPptxToMd",
+          "group": "3_batch@3"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchExcelToMd",
+          "group": "3_batch@4"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchAllToMd",
+          "group": "3_batch@5"
         }
       ]
     },
@@ -241,4 +314,4 @@
     "@typescript-eslint/parser": "^5.59.0",
     "@typescript-eslint/eslint-plugin": "^5.59.0"
   }
-} 
+}

@@ -16,6 +16,8 @@ venv/
 env/
 *.egg-info/
 dist/
+bundled/
+converted_markdown_files/
 
 # VSCode
 .vscode/*
