@@ -6,7 +6,7 @@ Markdown文档转换的瑞士军刀。
 
 **作者**: 余文锋  
 **邮箱**: 909188787@qq.com  
-**项目地址**: https://github.com/ywfhighlo/markdown-hub
+**项目地址**：https://github.com/ywfhighlo/markdown-hub 
 
 ## 🎯 功能特性
 
@@ -14,12 +14,17 @@ Markdown文档转换的瑞士军刀。
 - **Markdown → DOCX**: 将 `.md` 文件转换为带有自定义模板的 Word 文档。
 - **Markdown → PDF**: 将 `.md` 文件转换为 PDF 文档。
 - **Markdown → HTML**: 将 `.md` 文件转换为带样式的 HTML 网页。
+- **Markdown → PPTX**: 将 `.md` 文件转换为 PPTX 演示文稿。
 
 ### Office 与其他格式转换
 - **DOCX → Markdown**: 将 Word 文档转换为 `.md` 文件。
 - **XLSX → Markdown**: 将 Excel 表格转换为 `.md` 文件。
 - **PDF → Markdown**: 将 PDF 文档转换为 `.md` 文件。
 - **SVG/Draw.io → PNG**: 将矢量图或流程图转换为PNG图片。
+
+### 批量转换
+- **Markdown批量转DOCX/PDF/HTML/PPTX**: 批量转换目录中所有 `.md` 文件。
+- **PDF/DOCX/PPTX/Excel/All Files批量转Markdown**: 批量转换目录中指定类型或所有支持的文件为 `.md` 文件。
 
 ## 📋 系统要求
 
@@ -61,8 +66,12 @@ pip install -r requirements.txt
 
 1. 在 VS Code 的资源管理器中，右键点击任何支持的文件或包含这些文件的文件夹。
 2. 在弹出的上下文菜单中，选择您需要的转换命令 (例如 "Convert to DOCX")。
-3. 转换后的文件将出现在您配置的输出目录中。
-4. 若要配置模板、作者信息等，请右键选择 **"Template Settings..."**，这会直接带您到 VS Code 的设置页面。
+3. 对于批量转换：
+   - 右键点击文件夹。
+   - 选择如 "Markdown批量转PDF" 或 "PDF批量转Markdown" 等选项。
+   - 系统会自动处理目录中的所有匹配文件。
+4. 转换后的文件将出现在您配置的输出目录中（默认 `./converted_markdown_files`）。
+5. 若要配置模板、作者信息等，请右键选择 **"Template Settings..."**，这会直接带您到 VS Code 的设置页面。
 
 ## ⚙️ 配置选项
 
