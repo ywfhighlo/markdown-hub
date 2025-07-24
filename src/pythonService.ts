@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
-type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-svg-to-docx' | 'office-to-md' | 'diagram-to-png';
+type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-svg-to-docx' | 'office-to-md' | 'diagram-to-png' | 'excel-to-code';
 
 interface PythonResponse {
     success: boolean;
@@ -114,6 +114,31 @@ export function executePythonScript(
             // 添加PPTX SVG模式参数
             if (conversionOptions.pptxSvgMode) {
                 args.push('--pptx-svg-mode', conversionOptions.pptxSvgMode);
+            }
+            
+            // 添加Excel转代码参数
+            if (conversionOptions.outputDirectory) {
+                args.push('--output-dir', conversionOptions.outputDirectory);
+            }
+            if (conversionOptions.excelOutputDir) {
+                args.push('--excel-output-dir', conversionOptions.excelOutputDir);
+            }
+            if (conversionOptions.debugLevel) {
+                args.push('--excel-debug-level', conversionOptions.debugLevel);
+            }
+            if (conversionOptions.language) {
+                args.push('--excel-language', conversionOptions.language);
+            }
+            if (conversionOptions.maskStyle) {
+                args.push('--excel-mask-style', conversionOptions.maskStyle);
+            }
+            if (conversionOptions.registerShortDescription !== undefined) {
+                if (conversionOptions.registerShortDescription) {
+                    args.push('--excel-reg-short-description');
+                }
+            }
+            if (conversionOptions.sysinfoJsonPath) {
+                args.push('--excel-sysinfo-json', conversionOptions.sysinfoJsonPath);
             }
         }
         

@@ -1,0 +1,902 @@
+{
+  "baseinfo": {
+    "Can": {
+      "module_id": 80,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkCan_regdef.xlsx"
+    },
+    "Lin": {
+      "module_id": 82,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkLin_regdef.xlsx"
+    },
+    "Spi": {
+      "module_id": 83,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkSpi_regdef.xlsx"
+    },
+    "Fls": {
+      "module_id": 92,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkFlash_regdef.xlsx"
+    },
+    "Wdg": {
+      "module_id": 102,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkWdg_regdef.xlsx"
+    },
+    "Crypto": {
+      "module_id": 114,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.6.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkCrypto_regdef.xlsx"
+    },
+    "Pwm": {
+      "module_id": 121,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkPwm_regdef.xlsx"
+    },
+    "Port": {
+      "module_id": 124,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkPort_regdef.xlsx"
+    },
+    "I2c": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkI2c_regdef.xlsx"
+    },
+    "Sent": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkSent_regdef.xlsx"
+    },
+    "Uart": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkUart_regdef.xlsx"
+    },
+    "Psi5": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkPsi5_regdef.xlsx"
+    },
+    "Psi5s": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.2.2",
+      "vendor_id": 202,
+      "regdef_filename": "ArkPsi5s_regdef_le.xlsx"
+    },
+    "AxiSpi": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkAxiSpi_regdef.xlsx"
+    },
+    "ApbSpi": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkApbSpi_regdef.xlsx"
+    },
+    "AhbSpi": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkAhbSpi_regdef.xlsx"
+    },
+    "Dmac": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkDmac_regdef.xlsx"
+    },
+    "Gtm": {
+      "module_id": 255,
+      "module_sw_version": "1.0.0",
+      "autosar_release": "4.4.0",
+      "vendor_id": 202,
+      "regdef_filename": "ArkGtm_regdef.xlsx"
+    }
+  },
+  "autosar_module_list": {
+    "modules": [
+      {
+        "List of Basic Software Modules": "Module short name",
+        "Unnamed: 4": "Module abbreviation (API service prefix)",
+        "Unnamed: 8": "Module ID\n(uint16)",
+        "Unnamed: 9": "Specification document",
+        "Unnamed: 13": "AUTOSAR SW\nLayer"
+      },
+      {
+        "List of Basic Software Modules": "ADC Driver",
+        "Unnamed: 4": "Adc",
+        "Unnamed: 8": "123",
+        "Unnamed: 9": "AUTOSAR_SWS_ADCDriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "BSW Mode Manager",
+        "Unnamed: 4": "BswM",
+        "Unnamed: 8": "42",
+        "Unnamed: 9": "AUTOSAR_SWS_BSWModeManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "BSW Scheduler Module",
+        "Unnamed: 4": "SchM",
+        "Unnamed: 8": "130",
+        "Unnamed: 9": "\"since Rel. 4.0 part of RTE\"",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Bus Mirroring",
+        "Unnamed: 4": "Mirror",
+        "Unnamed: 8": "48",
+        "Unnamed: 9": "AUTOSAR_SWS_ BusMirroring.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "CAN Driver",
+        "Unnamed: 4": "Can",
+        "Unnamed: 8": "80",
+        "Unnamed: 9": "AUTOSAR_SWS_CANDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "CAN Interface",
+        "Unnamed: 4": "CanIf",
+        "Unnamed: 8": "60",
+        "Unnamed: 9": "AUTOSAR_SWS_CANInterface.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "CAN Network Management",
+        "Unnamed: 4": "CanNm",
+        "Unnamed: 8": "31",
+        "Unnamed: 9": "AUTOSAR_SWS_CANNetworkManagement.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "CAN State Manager",
+        "Unnamed: 4": "CanSM",
+        "Unnamed: 8": "140",
+        "Unnamed: 9": "AUTOSAR_SWS_CANStateManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "CAN Tranceiver Driver",
+        "Unnamed: 4": "CanTrcv",
+        "Unnamed: 8": "70",
+        "Unnamed: 9": "AUTOSAR_SWS_CANTransceiverDriver.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "CAN Transport Layer",
+        "Unnamed: 4": "CanTp",
+        "Unnamed: 8": "35",
+        "Unnamed: 9": "AUTOSAR_SWS_CANTransportLayer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "COM",
+        "Unnamed: 4": "Com",
+        "Unnamed: 8": "50",
+        "Unnamed: 9": "AUTOSAR_SWS_COM.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "COM Based Transformer",
+        "Unnamed: 4": "ComXf",
+        "Unnamed: 8": "175",
+        "Unnamed: 9": "AUTOSAR_SWS_COMBasedTransformer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "COM Manager",
+        "Unnamed: 4": "ComM",
+        "Unnamed: 8": "12",
+        "Unnamed: 9": "AUTOSAR_SWS_COMManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Complex Drivers",
+        "Unnamed: 4": "no prefix (AUTOSAR\ninterface)",
+        "Unnamed: 8": "255",
+        "Unnamed: 9": "not applicable",
+        "Unnamed: 13": "Complex Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Core Test",
+        "Unnamed: 4": "CorTst",
+        "Unnamed: 8": "103",
+        "Unnamed: 9": "AUTOSAR_SWS_CoreTest.pdf",
+        "Unnamed: 13": "Microcontroller Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Crypto Driver",
+        "Unnamed: 4": "Crypto",
+        "Unnamed: 8": "114",
+        "Unnamed: 9": "AUTOSAR_SWS_CryptoDriver.pdf",
+        "Unnamed: 13": "Crypto Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Crypto Interface",
+        "Unnamed: 4": "CryIf",
+        "Unnamed: 8": "112",
+        "Unnamed: 9": "AUTOSAR_SWS_CryptoInterface.pdf",
+        "Unnamed: 13": "Crypto HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Crypto Service Manager",
+        "Unnamed: 4": "Csm",
+        "Unnamed: 8": "110",
+        "Unnamed: 9": "AUTOSAR_SWS_CryptoServiceManager.pdf",
+        "Unnamed: 13": "Crypto Services"
+      },
+      {
+        "List of Basic Software Modules": "Default Error Tracer",
+        "Unnamed: 4": "Det",
+        "Unnamed: 8": "15",
+        "Unnamed: 9": "AUTOSAR_SWS_DefaultErrorTracer.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Diagnostic Communication Manager",
+        "Unnamed: 4": "Dcm",
+        "Unnamed: 8": "53",
+        "Unnamed: 9": "AUTOSAR_SWS_DiagnosticCommunicationManag er.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Diagnostic Event Manager",
+        "Unnamed: 4": "Dem",
+        "Unnamed: 8": "54",
+        "Unnamed: 9": "AUTOSAR_SWS_DiagnosticEventManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Diagnostic Log and Trace",
+        "Unnamed: 4": "Dlt",
+        "Unnamed: 8": "55",
+        "Unnamed: 9": "AUTOSAR_SWS_DiagnosticLogAndTrace.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Diagnostic over IP",
+        "Unnamed: 4": "DoIP",
+        "Unnamed: 8": "173",
+        "Unnamed: 9": "AUTOSAR_SWS_DiagnosticOverIP.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "DIO Driver",
+        "Unnamed: 4": "Dio",
+        "Unnamed: 8": "120",
+        "Unnamed: 9": "AUTOSAR_SWS_DIODriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "E2E Transformer",
+        "Unnamed: 4": "E2EXf",
+        "Unnamed: 8": "176",
+        "Unnamed: 9": "AUTOSAR_SWS_E2ETransformer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "ECU State Manager",
+        "Unnamed: 4": "EcuM",
+        "Unnamed: 8": "10",
+        "Unnamed: 9": "AUTOSAR_SWS_ECUStateManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "EEPROM Abstraction",
+        "Unnamed: 4": "Ea",
+        "Unnamed: 8": "40",
+        "Unnamed: 9": "AUTOSAR_SWS_EEPROMAbstraction.pdf",
+        "Unnamed: 13": "Memory HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "EEPROM Driver",
+        "Unnamed: 4": "Eep",
+        "Unnamed: 8": "90",
+        "Unnamed: 9": "AUTOSAR_SWS_EEPROMDriver.pdf",
+        "Unnamed: 13": "Memory Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Ethernet Driver",
+        "Unnamed: 4": "Eth",
+        "Unnamed: 8": "88",
+        "Unnamed: 9": "AUTOSAR_SWS_EthernetDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Ethernet Interface",
+        "Unnamed: 4": "EthIf",
+        "Unnamed: 8": "65",
+        "Unnamed: 9": "AUTOSAR_SWS_EthernetInterface.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Ethernet State Manager",
+        "Unnamed: 4": "EthSM",
+        "Unnamed: 8": "143",
+        "Unnamed: 9": "AUTOSAR_SWS_EthernetStateManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Ethernet Switch Driver",
+        "Unnamed: 4": "EthSwt",
+        "Unnamed: 8": "89",
+        "Unnamed: 9": "AUTOSAR_SWS_EthernetSwitchDriver.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Ethernet Transceiver Driver",
+        "Unnamed: 4": "EthTrcv",
+        "Unnamed: 8": "73",
+        "Unnamed: 9": "AUTOSAR_SWS_EthernetTransceiverDriver.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Flash Driver",
+        "Unnamed: 4": "Fls",
+        "Unnamed: 8": "92",
+        "Unnamed: 9": "AUTOSAR_SWS_FlashDriver.pdf",
+        "Unnamed: 13": "Memory Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Flash EEPROM Emulation",
+        "Unnamed: 4": "Fee",
+        "Unnamed: 8": "21",
+        "Unnamed: 9": "AUTOSAR_SWS_FlashEEPROMEmulation.pdf",
+        "Unnamed: 13": "Memory HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Flash Test",
+        "Unnamed: 4": "FlsTst",
+        "Unnamed: 8": "104",
+        "Unnamed: 9": "AUTOSAR_SWS_FlashTest.pdf",
+        "Unnamed: 13": "Memory Drivers"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay AUTOSAR Transport Layer",
+        "Unnamed: 4": "FrArTp",
+        "Unnamed: 8": "38",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayARTransportLayer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay Driver",
+        "Unnamed: 4": "Fr",
+        "Unnamed: 8": "81",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay Interface",
+        "Unnamed: 4": "FrIf",
+        "Unnamed: 8": "61",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayInterface.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay ISO Transport Layer",
+        "Unnamed: 4": "FrTp",
+        "Unnamed: 8": "36",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayISOTransportLayer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay Network Management",
+        "Unnamed: 4": "FrNm",
+        "Unnamed: 8": "32",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayNetworkManagement.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay State Manager",
+        "Unnamed: 4": "FrSM",
+        "Unnamed: 8": "142",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayStateManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "FlexRay Tranceiver Driver",
+        "Unnamed: 4": "FrTrcv",
+        "Unnamed: 8": "71",
+        "Unnamed: 9": "AUTOSAR_SWS_FlexRayTransceiverDriver.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Function Inhibition Manager",
+        "Unnamed: 4": "FiM",
+        "Unnamed: 8": "11",
+        "Unnamed: 9": "AUTOSAR_SWS_FunctionInhibitionManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "GPT Driver",
+        "Unnamed: 4": "Gpt",
+        "Unnamed: 8": "100",
+        "Unnamed: 9": "AUTOSAR_SWS_GPTDriver.pdf",
+        "Unnamed: 13": "Microcontroller Drivers"
+      },
+      {
+        "List of Basic Software Modules": "ICU Driver",
+        "Unnamed: 4": "Icu",
+        "Unnamed: 8": "122",
+        "Unnamed: 9": "AUTOSAR_SWS_ICUDriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "IO HW Abstraction",
+        "Unnamed: 4": "no prefix (AUTOSAR\ninterface)",
+        "Unnamed: 8": "254",
+        "Unnamed: 9": "AUTOSAR_SWS_IOHardwareAbstraction.pdf",
+        "Unnamed: 13": "I/O HW\nAbstraction"
+      },
+      {
+        "List of Basic Software Modules": "IPDU Multiplexer",
+        "Unnamed: 4": "IpduM",
+        "Unnamed: 8": "52",
+        "Unnamed: 9": "AUTOSAR_SWS_IPDUMultiplexer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Key Manager",
+        "Unnamed: 4": "KeyM",
+        "Unnamed: 8": "109",
+        "Unnamed: 9": "AUTOSAR_SWS_KeyManager.pdf",
+        "Unnamed: 13": "Crypto Services"
+      },
+      {
+        "List of Basic Software Modules": "Large Data COM",
+        "Unnamed: 4": "LdCom",
+        "Unnamed: 8": "49",
+        "Unnamed: 9": "AUTOSAR_SWS_LargeDataCOM.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "LIN Driver",
+        "Unnamed: 4": "Lin",
+        "Unnamed: 8": "82",
+        "Unnamed: 9": "AUTOSAR_SWS_LINDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "LIN Interface",
+        "Unnamed: 4": "LinIf",
+        "Unnamed: 8": "62",
+        "Unnamed: 9": "AUTOSAR_SWS_LINInterface.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "LIN State Manager",
+        "Unnamed: 4": "LinSM",
+        "Unnamed: 8": "141",
+        "Unnamed: 9": "AUTOSAR_SWS_LINStateManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "LIN Transceiver Driver",
+        "Unnamed: 4": "LinTrcv",
+        "Unnamed: 8": "64",
+        "Unnamed: 9": "AUTOSAR_SWS_LINTransceiverDriver.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "MCU Driver",
+        "Unnamed: 4": "Mcu",
+        "Unnamed: 8": "101",
+        "Unnamed: 9": "AUTOSAR_SWS_MCUDriver.pdf",
+        "Unnamed: 13": "Microcontroller Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Memory Abstraction Interface",
+        "Unnamed: 4": "MemIf",
+        "Unnamed: 8": "22",
+        "Unnamed: 9": "AUTOSAR_SWS_MemoryAbstractionInterface.pdf",
+        "Unnamed: 13": "Memory Services"
+      },
+      {
+        "List of Basic Software Modules": "Network Management Interface",
+        "Unnamed: 4": "Nm",
+        "Unnamed: 8": "29",
+        "Unnamed: 9": "AUTOSAR_SWS_NetworkManagementInterface.pd f",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "NVRAM Manager",
+        "Unnamed: 4": "NvM",
+        "Unnamed: 8": "20",
+        "Unnamed: 9": "AUTOSAR_SWS_NVRAMManager.pdf",
+        "Unnamed: 13": "Memory Services"
+      },
+      {
+        "List of Basic Software Modules": "OCU Driver",
+        "Unnamed: 4": "Ocu",
+        "Unnamed: 8": "125",
+        "Unnamed: 9": "AUTOSAR_SWS_OCUDriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "OS",
+        "Unnamed: 4": "Os\n(not used as API prefix)",
+        "Unnamed: 8": "1",
+        "Unnamed: 9": "AUTOSAR_SWS_OS.pdf",
+        "Unnamed: 13": "System Services - OS"
+      },
+      {
+        "List of Basic Software Modules": "PDU Router",
+        "Unnamed: 4": "PduR",
+        "Unnamed: 8": "51",
+        "Unnamed: 9": "AUTOSAR_SWS_PDURouter.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Port Driver",
+        "Unnamed: 4": "Port",
+        "Unnamed: 8": "124",
+        "Unnamed: 9": "AUTOSAR_SWS_PortDriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "PWM Driver",
+        "Unnamed: 4": "Pwm",
+        "Unnamed: 8": "121",
+        "Unnamed: 9": "AUTOSAR_SWS_PWMDriver.pdf",
+        "Unnamed: 13": "I/O Drivers"
+      },
+      {
+        "List of Basic Software Modules": "RAM Test",
+        "Unnamed: 4": "RamTst",
+        "Unnamed: 8": "93",
+        "Unnamed: 9": "AUTOSAR_SWS_RAMTest.pdf",
+        "Unnamed: 13": "Memory Drivers"
+      },
+      {
+        "List of Basic Software Modules": "RTE",
+        "Unnamed: 4": "Rte",
+        "Unnamed: 8": "2",
+        "Unnamed: 9": "AUTOSAR_SWS_RTE.pdf",
+        "Unnamed: 13": "RTE"
+      },
+      {
+        "List of Basic Software Modules": "SAE J1939 Diagnostic Communication Manager",
+        "Unnamed: 4": "J1939Dcm",
+        "Unnamed: 8": "58",
+        "Unnamed: 9": "AUTOSAR_SWS_SAEJ1939DiagnosticCommunica tionManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SAE J1939 Network Management",
+        "Unnamed: 4": "J1939Nm",
+        "Unnamed: 8": "34",
+        "Unnamed: 9": "AUTOSAR_SWS_SAEJ1939NetworkManagement. pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SAE J1939 Request Manager",
+        "Unnamed: 4": "J1939Rm",
+        "Unnamed: 8": "59",
+        "Unnamed: 9": "AUTOSAR_SWS_SAEJ1939RequestManager.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SAE J1939 Transport Layer",
+        "Unnamed: 4": "J1939Tp",
+        "Unnamed: 8": "37",
+        "Unnamed: 9": "AUTOSAR_SWS_SAEJ1939TransportLayer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Secure Onboard Communication",
+        "Unnamed: 4": "SecOC",
+        "Unnamed: 8": "150",
+        "Unnamed: 9": "AUTOSAR_SWS_SecureOnboardCommunication.p df",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Service Discovery",
+        "Unnamed: 4": "Sd",
+        "Unnamed: 8": "171",
+        "Unnamed: 9": "AUTOSAR_SWS_ServiceDiscovery.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Socket Adaptor",
+        "Unnamed: 4": "SoAd",
+        "Unnamed: 8": "56",
+        "Unnamed: 9": "AUTOSAR_SWS_SocketAdaptor.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SOME/IP Transformer",
+        "Unnamed: 4": "SomeIpXf",
+        "Unnamed: 8": "174",
+        "Unnamed: 9": "AUTOSAR_SWS_SOMEIPTransformer.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SOME/IP Transport Protocol",
+        "Unnamed: 4": "SomeIpTp",
+        "Unnamed: 8": "177",
+        "Unnamed: 9": "AUTOSAR_SWS_SOMEIPTransportProtocol\n.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "SPI Handler Driver",
+        "Unnamed: 4": "Spi",
+        "Unnamed: 8": "83",
+        "Unnamed: 9": "AUTOSAR_SWS_SPIHandlerDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Synchronized Time-Base Manager",
+        "Unnamed: 4": "StbM",
+        "Unnamed: 8": "160",
+        "Unnamed: 9": "AUTOSAR_SWS_SynchronizedTimeBaseManager. pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "TCP/IP Stack",
+        "Unnamed: 4": "TcpIp",
+        "Unnamed: 8": "170",
+        "Unnamed: 9": "AUTOSAR_SWS_TcpIp.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Time Service",
+        "Unnamed: 4": "Tm",
+        "Unnamed: 8": "14",
+        "Unnamed: 9": "AUTOSAR_SWS_TimeService.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Time Sync Over CAN",
+        "Unnamed: 4": "CanTSyn",
+        "Unnamed: 8": "161",
+        "Unnamed: 9": "AUTOSAR_SWS_TimeSyncOverCAN.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Time Sync Over Ethernet",
+        "Unnamed: 4": "EthTSyn",
+        "Unnamed: 8": "164",
+        "Unnamed: 9": "AUTOSAR_SWS_TimeSyncOverEthernet.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Time Sync Over FlexRay",
+        "Unnamed: 4": "FrTSyn",
+        "Unnamed: 8": "163",
+        "Unnamed: 9": "AUTOSAR_SWS_TimeSyncOverFlexRay.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "TTCAN Driver",
+        "Unnamed: 4": "Ttcan",
+        "Unnamed: 8": "84",
+        "Unnamed: 9": "AUTOSAR_SWS_TTCANDriver.pdf",
+        "Unnamed: 13": "Communication Drivers"
+      },
+      {
+        "List of Basic Software Modules": "TTCAN Interface",
+        "Unnamed: 4": "TtcanIf",
+        "Unnamed: 8": "66",
+        "Unnamed: 9": "AUTOSAR_SWS_TTCANInterface.pdf",
+        "Unnamed: 13": "Communication HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "UDP Network Management",
+        "Unnamed: 4": "UdpNm",
+        "Unnamed: 8": "33",
+        "Unnamed: 9": "AUTOSAR_SWS_UDPNetworkManagement.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "Vehicle-2-X Basic Transport",
+        "Unnamed: 4": "V2xBtp",
+        "Unnamed: 8": "183",
+        "Unnamed: 9": "AUTOSAR_SWS_V2XBasicTransport.pdf",
+        "Unnamed: 13": "Off-board Comm. Services"
+      },
+      {
+        "List of Basic Software Modules": "Vehicle-2-X Facilities",
+        "Unnamed: 4": "V2xFac",
+        "Unnamed: 8": "184",
+        "Unnamed: 9": "AUTOSAR_SWS_V2XFacilities.pdf",
+        "Unnamed: 13": "Off-board Comm. Services"
+      },
+      {
+        "List of Basic Software Modules": "Vehicle-2-X GeoNetworking",
+        "Unnamed: 4": "V2xGn",
+        "Unnamed: 8": "182",
+        "Unnamed: 9": "AUTOSAR_SWS_V2XGeoNetworking.pdf",
+        "Unnamed: 13": "Off-board Comm. Services"
+      },
+      {
+        "List of Basic Software Modules": "Vehicle-2-X Management",
+        "Unnamed: 4": "V2xM",
+        "Unnamed: 8": "185",
+        "Unnamed: 9": "AUTOSAR_SWS_V2XManagement.pdf",
+        "Unnamed: 13": "Off-board Comm. Services"
+      },
+      {
+        "List of Basic Software Modules": "Watchdog Driver",
+        "Unnamed: 4": "Wdg",
+        "Unnamed: 8": "102",
+        "Unnamed: 9": "AUTOSAR_SWS_WatchdogDriver.pdf",
+        "Unnamed: 13": "Microcontroller Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Watchdog Interface",
+        "Unnamed: 4": "WdgIf",
+        "Unnamed: 8": "43",
+        "Unnamed: 9": "AUTOSAR_SWS_WatchdogInterface.pdf",
+        "Unnamed: 13": "Onboard Device Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "Watchdog Manager",
+        "Unnamed: 4": "WdgM",
+        "Unnamed: 8": "13",
+        "Unnamed: 9": "AUTOSAR_SWS_WatchdogManager.pdf",
+        "Unnamed: 13": "System Services"
+      },
+      {
+        "List of Basic Software Modules": "Wireless Ethernet Driver",
+        "Unnamed: 4": "WEth",
+        "Unnamed: 8": "87",
+        "Unnamed: 9": "AUTOSAR_SWS_WirelessEthernetDriver.pdf",
+        "Unnamed: 13": "Wireless Comm. Drivers"
+      },
+      {
+        "List of Basic Software Modules": "Wireless Ethernet Transceiver Driver",
+        "Unnamed: 4": "WEthTrcv",
+        "Unnamed: 8": "74",
+        "Unnamed: 9": "AUTOSAR_SWS_WirelessEthernetTransceiverDriv er.pdf",
+        "Unnamed: 13": "Wireless Comm. HW Abstraction"
+      },
+      {
+        "List of Basic Software Modules": "XCP",
+        "Unnamed: 4": "Xcp",
+        "Unnamed: 8": "212",
+        "Unnamed: 9": "AUTOSAR_SWS_XCP.pdf",
+        "Unnamed: 13": "Communication Services"
+      },
+      {
+        "List of Basic Software Modules": "List of libraries"
+      },
+      {
+        "List of Basic Software Modules": "Libraries short name",
+        "Unnamed: 3": "Libraries abbreviation (API service prefix)",
+        "Unnamed: 7": "Libraries (Module) ID (uint16)",
+        "Unnamed: 10": "Specification document"
+      },
+      {
+        "List of Basic Software Modules": "CRC Library",
+        "Unnamed: 3": "Crc",
+        "Unnamed: 7": "201",
+        "Unnamed: 10": "AUTOSAR_SWS_CRCLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "BFx Library",
+        "Unnamed: 3": "Bfx",
+        "Unnamed: 7": "205",
+        "Unnamed: 10": "AUTOSAR_SWS_BFXLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "E2E Library",
+        "Unnamed: 3": "E2E",
+        "Unnamed: 7": "207",
+        "Unnamed: 10": "AUTOSAR_SWS_E2ELibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "EFx Library",
+        "Unnamed: 3": "Efx",
+        "Unnamed: 7": "208",
+        "Unnamed: 10": "AUTOSAR_SWS_EFXLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "IFl Library",
+        "Unnamed: 3": "Ifl",
+        "Unnamed: 7": "209",
+        "Unnamed: 10": "AUTOSAR_SWS_IFLLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "MFl Library",
+        "Unnamed: 3": "Mfl",
+        "Unnamed: 7": "210",
+        "Unnamed: 10": "AUTOSAR_SWS_MFLLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "MFx Library",
+        "Unnamed: 3": "Mfx",
+        "Unnamed: 7": "211",
+        "Unnamed: 10": "AUTOSAR_SWS_MFXLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "IFx Library",
+        "Unnamed: 3": "Ifx",
+        "Unnamed: 7": "213",
+        "Unnamed: 10": "AUTOSAR_SWS_IFXLibrary.pdf"
+      },
+      {
+        "List of Basic Software Modules": "List of special files"
+      },
+      {
+        "List of Basic Software Modules": "AUTOSAR name",
+        "Unnamed: 2": "Short name (API service prefix)",
+        "Unnamed: 6": "File name",
+        "Unnamed: 11": "Module ID",
+        "Unnamed: 12": "Specification document"
+      },
+      {
+        "List of Basic Software Modules": "Platform Types",
+        "Unnamed: 2": "Platform",
+        "Unnamed: 6": "Platform_Types.h",
+        "Unnamed: 11": "199",
+        "Unnamed: 12": "AUTOSAR_SWS_PlatformTypes.pdf"
+      },
+      {
+        "List of Basic Software Modules": "Compiler Abstraction",
+        "Unnamed: 2": "Compiler",
+        "Unnamed: 6": "Compiler.h",
+        "Unnamed: 11": "198",
+        "Unnamed: 12": "AUTOSAR_SWS_CompilerAbstraction.pdf"
+      },
+      {
+        "List of Basic Software Modules": "Standard Types",
+        "Unnamed: 2": "Std",
+        "Unnamed: 6": "Std_Types.h",
+        "Unnamed: 11": "197",
+        "Unnamed: 12": "AUTOSAR_SWS_StandardTypes.pdf"
+      },
+      {
+        "List of Basic Software Modules": "Communication Stack Types",
+        "Unnamed: 2": "Comtype",
+        "Unnamed: 6": "ComStack_Types.h",
+        "Unnamed: 11": "196",
+        "Unnamed: 12": "AUTOSAR_SWS_CommunicationStackTypes.pdf"
+      },
+      {
+        "List of Basic Software Modules": "Memory Mapping",
+        "Unnamed: 2": "MemMap",
+        "Unnamed: 6": "(Prefix_)MemMap.h",
+        "Unnamed: 11": "195",
+        "Unnamed: 12": "AUTOSAR_SWS_MemoryMapping.pdf"
+      }
+    ],
+    "total_count": 112
+  }
+}

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { handleConvertCommand, handleOpenTemplateSettingsCommand } from './commandHandler';
+import { handleConvertCommand, handleOpenTemplateSettingsCommand, handleOpenExcelToCodeSettingsCommand } from './commandHandler';
 
 // 批量转换处理函数 - 复用现有逻辑
 async function handleBatchConvert(uri: vscode.Uri, fileType: string, context: vscode.ExtensionContext) {
@@ -74,7 +74,13 @@ export function activate(context: vscode.ExtensionContext) {
             (uri: vscode.Uri) => handleBatchConvert(uri, 'excel', context)),
         
         vscode.commands.registerCommand('markdown-hub.batchAllToMd', 
-            (uri: vscode.Uri) => handleBatchConvert(uri, 'all', context))
+            (uri: vscode.Uri) => handleBatchConvert(uri, 'all', context)),
+        
+        vscode.commands.registerCommand('markdown-hub.excelToCode', 
+            (uri: vscode.Uri) => handleConvertCommand(uri, 'excel-to-code', context)),
+        
+        vscode.commands.registerCommand('markdown-hub.excelToCodeSettings', 
+            () => handleOpenExcelToCodeSettingsCommand())
     ];
     
     context.subscriptions.push(...disposables);

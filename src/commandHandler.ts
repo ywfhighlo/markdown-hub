@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { executePythonScript } from './pythonService';
 
-type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png';
+type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png' | 'excel-to-code';
 
 /**
  * 处理所有转换命令的核心逻辑
@@ -101,6 +101,29 @@ export async function handleConvertCommand(
                     svgOutputWidth: config.get<number>('svgOutputWidth', 800),
                     svgFallbackEnabled: config.get<boolean>('svgFallbackEnabled', true)
                 };
+            } else if (conversionType === 'excel-to-code') {
+                // Excel转代码的配置
+                const excelConfig = vscode.workspace.getConfiguration('markdown-hub.excelToCode');
+                const customOutputDir = excelConfig.get<string>('outputDirectory', './generated_code');
+                
+                // 使用Excel转代码专用的输出目录
+                const excelOutputDir = path.isAbsolute(customOutputDir) 
+                    ? customOutputDir 
+                    : path.join(path.dirname(sourcePath), customOutputDir);
+                
+                // 确保输出目录存在
+                if (!fs.existsSync(excelOutputDir)) {
+                    fs.mkdirSync(excelOutputDir, { recursive: true });
+                }
+                
+                conversionOptions = {
+                    outputDir: excelOutputDir,
+                    debugLevel: excelConfig.get<string>('debugLevel', 'info'),
+                    language: excelConfig.get<string>('language', 'english'),
+                    maskStyle: excelConfig.get<string>('maskStyle', 'nxp'),
+                    regShortDescription: excelConfig.get<boolean>('registerShortDescription', true),
+                    sysinfoJson: excelConfig.get<string>('sysinfoJsonPath', '')
+                };
             }
             
             const result = await executePythonScript(
@@ -150,6 +173,14 @@ export async function handleConvertCommand(
 export async function handleOpenTemplateSettingsCommand() {
     // 打开VS Code设置页面，并定位到模板相关设置
     await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ywfhighlo.markdown-hub template');
+}
+
+/**
+ * 打开Excel转代码设置页面
+ */
+export async function handleOpenExcelToCodeSettingsCommand() {
+    // 打开VS Code设置页面，并定位到Excel转代码相关设置
+    await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ywfhighlo.markdown-hub excelToCode');
 }
 
  

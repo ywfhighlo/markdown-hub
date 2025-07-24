@@ -81,6 +81,14 @@
       {
         "command": "markdown-hub.batchAllToMd",
         "title": "All Files批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.excelToCode",
+        "title": "Convert to Code"
+      },
+      {
+        "command": "markdown-hub.excelToCodeSettings",
+        "title": "Excel to Code Settings..."
       }
     ],
     "menus": {
@@ -194,6 +202,16 @@
           "when": "explorerResourceIsFolder",
           "command": "markdown-hub.batchAllToMd",
           "group": "3_batch@5"
+        },
+        {
+          "when": "resourceExtname == .xlsx",
+          "command": "markdown-hub.excelToCode",
+          "group": "2_conversion@6"
+        },
+        {
+          "when": "resourceExtname == .xlsx",
+          "command": "markdown-hub.excelToCodeSettings",
+          "group": "2_conversion@7"
         }
       ]
     },
@@ -334,6 +352,63 @@
           "markdownDescription": "PPTX转换模式：\n- `full`: 完整模式，标题占一页，内容根据情况分页显示，SVG单独占一页\n- `title_and_svg`: 仅标题和SVG模式，只为标题和SVG图像创建幻灯片",
           "scope": "window",
           "order": 64
+        },
+        "markdown-hub.excelToCode.outputDirectory": {
+          "type": "string",
+          "default": "./generated_code",
+          "description": "Directory where generated code files will be saved",
+          "scope": "window",
+          "order": 70
+        },
+        "markdown-hub.excelToCode.debugLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error"
+          ],
+          "description": "Debug level for Excel to Code conversion",
+          "scope": "window",
+          "order": 71
+        },
+        "markdown-hub.excelToCode.language": {
+          "type": "string",
+          "default": "english",
+          "enum": [
+            "english",
+            "chinese"
+          ],
+          "description": "Language for generated code comments and documentation",
+          "scope": "window",
+          "order": 72
+        },
+        "markdown-hub.excelToCode.maskStyle": {
+          "type": "string",
+          "default": "nxp",
+          "enum": [
+            "nxp",
+            "infineon",
+            "arkuart"
+          ],
+          "description": "Mask style for register definitions",
+          "scope": "window",
+          "order": 73
+        },
+        "markdown-hub.excelToCode.registerShortDescription": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include short descriptions for registers in generated code",
+          "scope": "window",
+          "order": 74
+        },
+        "markdown-hub.excelToCode.sysinfoJsonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to system information JSON file (optional)",
+          "scope": "window",
+          "order": 75
         }
       }
     }

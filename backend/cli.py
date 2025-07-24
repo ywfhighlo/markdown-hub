@@ -85,6 +85,28 @@ def main():
                        default='full',
                        help='PPTX转换模式: full=完整转换, title_and_svg=标题和SVG模式 (默认: full)')
     
+    # Excel到代码转换相关参数
+    parser.add_argument('--excel-output-dir', 
+                       help='Excel转代码的输出目录 (可选，覆盖默认输出目录)')
+    parser.add_argument('--excel-debug-level', 
+                       choices=['debug', 'info', 'warning', 'error'],
+                       default='info',
+                       help='Excel到代码转换的调试级别 (默认: info)')
+    parser.add_argument('--excel-language', 
+                       choices=['english', 'chinese'],
+                       default='english',
+                       help='生成代码的语言设置 (默认: english)')
+    parser.add_argument('--excel-reg-short-description', 
+                       action='store_true',
+                       default=True,
+                       help='是否生成寄存器短描述 (默认: 启用)')
+    parser.add_argument('--excel-mask-style', 
+                       choices=['nxp', 'infineon', 'arkuart'],
+                       default='nxp',
+                       help='寄存器掩码样式 (默认: nxp)')
+    parser.add_argument('--excel-sysinfo-json', 
+                       help='系统信息JSON文件路径 (可选)')
+    
     args = parser.parse_args()
     
     # 设置日志级别
@@ -134,7 +156,14 @@ def main():
             'svg_output_width': args.svg_output_width,
             'svg_fallback_enabled': args.svg_fallback_enabled,
             # PPTX SVG模式参数
-            'pptx_svg_mode': args.pptx_svg_mode
+            'pptx_svg_mode': args.pptx_svg_mode,
+            # Excel到代码转换参数
+            'excel_output_dir': args.excel_output_dir,
+            'debug_level': args.excel_debug_level,
+            'language': args.excel_language,
+            'reg_short_description': args.excel_reg_short_description,
+            'mask_style': args.excel_mask_style,
+            'sysinfo_json': args.excel_sysinfo_json
         }
         
         # 从 conversion_type 中提取并传递 output_format
@@ -150,8 +179,16 @@ def main():
 
         # 执行转换
         report_progress("正在转换...", 50)
-        output_files = converter.convert(args.input_path)
-        success = len(output_files) > 0
+        
+        # 根据转换类型调用不同的convert方法
+        if args.conversion_type == 'excel-to-code':
+            # ExcelToCodeConverter返回文件列表
+            output_files = converter.convert(args.input_path)
+            success = len(output_files) > 0
+        else:
+            # 其他转换器使用原来的方法
+            output_files = converter.convert(args.input_path)
+            success = len(output_files) > 0
 
         # 报告完成
         report_progress("转换完成", 100)
