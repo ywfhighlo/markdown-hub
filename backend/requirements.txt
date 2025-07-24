@@ -53,6 +53,7 @@ chardet
 pycparser
 Jinja2
 MarkupSafe
+psutil
 
 # Mac特定依赖
 appscript; sys_platform == 'darwin'
@@ -64,4 +65,4 @@ typing-extensions>=4.0.0
 # 1. pandoc - Mac: brew install pandoc, Windows: 下载安装包
 # 2. Office处理: Windows需要Microsoft Word, Mac可用LibreOffice
 # 3. Tesseract OCR: Mac: brew install tesseract
-# 4. Cairo图形库: Mac: brew install cairo 
+# 4. Cairo图形库: Mac: brew install cairo

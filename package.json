@@ -2,7 +2,7 @@
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
   "description": "Markdown文档转换的瑞士军刀。",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "余文锋 <909188787@qq.com>",
   "publisher": "ywfhighlo",
   "repository": {
@@ -15,6 +15,7 @@
   "categories": [
     "Other"
   ],
+  "icon": "media/icon.png",
   "activationEvents": [
     "onView:explorer",
     "onCommand:markdown-hub.mdToDocx",
@@ -293,6 +294,52 @@
           "markdownDescription": "**Path or command for Tesseract-OCR**\n\nRequired for OCR when converting scanned PDFs. Can be a full path to `tesseract.exe` or just `tesseract` if it's in your system's PATH.",
           "scope": "window",
           "order": 50
+        },
+        "markdown-hub.svgDpi": {
+          "type": "number",
+          "default": 300,
+          "markdownDescription": "**SVG to PNG DPI**\n\nDPI (dots per inch) for SVG to PNG conversion. Higher values produce better quality but larger file sizes.",
+          "scope": "window",
+          "order": 60
+        },
+        "markdown-hub.svgConversionMethod": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "cairosvg",
+            "inkscape",
+            "rsvg-convert",
+            "svglib"
+          ],
+          "markdownDescription": "**SVG Conversion Method**\n\nMethod to use for converting SVG to PNG. 'auto' will try methods in order of preference.",
+          "scope": "window",
+          "order": 61
+        },
+        "markdown-hub.svgOutputWidth": {
+          "type": "number",
+          "default": 800,
+          "markdownDescription": "**SVG Output Width**\n\nMaximum width in pixels for converted SVG images. Height will be scaled proportionally.",
+          "scope": "window",
+          "order": 62
+        },
+        "markdown-hub.svgFallbackEnabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "**Enable SVG Fallback**\n\nWhen enabled, if SVG conversion fails, the original SVG code will be preserved in the document.",
+          "scope": "window",
+          "order": 63
+        },
+        "markdown-hub.pptxSvgMode": {
+          "type": "string",
+          "default": "title_and_svg",
+          "enum": [
+            "full",
+            "title_and_svg"
+          ],
+          "markdownDescription": "PPTX转换模式：\n- `full`: 完整模式，标题占一页，内容根据情况分页显示，SVG单独占一页\n- `title_and_svg`: 仅标题和SVG模式，只为标题和SVG图像创建幻灯片",
+          "scope": "window",
+          "order": 64
         }
       }
     }
@@ -307,11 +354,12 @@
     "test": "npm run compile && node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
     "@types/node": "20.x",
-    "typescript": "^5.0.0",
-    "eslint": "^8.40.0",
+    "@types/vscode": "^1.80.0",
+    "@typescript-eslint/eslint-plugin": "^5.59.0",
     "@typescript-eslint/parser": "^5.59.0",
-    "@typescript-eslint/eslint-plugin": "^5.59.0"
+    "eslint": "^8.40.0",
+    "sharp": "^0.34.3",
+    "typescript": "^5.0.0"
   }
 }

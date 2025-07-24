@@ -12,6 +12,7 @@ Markdown文档转换的瑞士军刀。
 
 ### Markdown 转换
 - **Markdown → DOCX**: 将 `.md` 文件转换为带有自定义模板的 Word 文档。
+- **Markdown → DOCX (SVG支持)**: 将包含SVG代码块的 `.md` 文件转换为 Word 文档，SVG自动转换为PNG图片。
 - **Markdown → PDF**: 将 `.md` 文件转换为 PDF 文档。
 - **Markdown → HTML**: 将 `.md` 文件转换为带样式的 HTML 网页。
 - **Markdown → PPTX**: 将 `.md` 文件转换为 PPTX 演示文稿。
@@ -35,6 +36,8 @@ Markdown文档转换的瑞士军刀。
 - Microsoft Word（用于DOCX转换）
 - Pandoc（[下载安装包](https://pandoc.org/installing.html)）
 - Tesseract OCR（用于PDF文字识别）
+- Cairo图形库（用于SVG转换，可选）
+- Inkscape（用于SVG转换，可选）
 
 ### macOS
 ```bash
@@ -42,6 +45,7 @@ Markdown文档转换的瑞士军刀。
 brew install pandoc
 brew install tesseract
 brew install cairo
+brew install inkscape
 ```
 - Python 3.8 或更高版本
 - LibreOffice（用于DOCX转换）
@@ -52,6 +56,7 @@ brew install cairo
 - Pandoc
 - Tesseract OCR
 - Cairo图形库
+- Inkscape（用于SVG转换）
 
 ## 🛠️ 安装
 

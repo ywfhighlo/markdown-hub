@@ -58,6 +58,12 @@ export async function handleConvertCommand(
                         }
                         conversionOptions.docxTemplatePath = templatePath;
                     }
+                    
+                    // 所有转换都自动支持SVG，添加SVG配置
+                    conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
+                    conversionOptions.svgConversionMethod = config.get<string>('svgConversionMethod', 'auto');
+                    conversionOptions.svgOutputWidth = config.get<number>('svgOutputWidth', 800);
+                    conversionOptions.svgFallbackEnabled = config.get<boolean>('svgFallbackEnabled', true);
                 } else if (conversionType === 'md-to-pptx') {
                     if (config.get<boolean>('usePptxTemplate', true)) {
                         let templatePath = config.get<string>('pptxTemplatePath', '');
@@ -66,6 +72,21 @@ export async function handleConvertCommand(
                         }
                         conversionOptions.pptxTemplatePath = templatePath;
                     }
+                    
+                    // 所有转换都自动支持SVG，添加SVG配置
+                    conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
+                    conversionOptions.svgConversionMethod = config.get<string>('svgConversionMethod', 'auto');
+                    conversionOptions.svgOutputWidth = config.get<number>('svgOutputWidth', 800);
+                    conversionOptions.svgFallbackEnabled = config.get<boolean>('svgFallbackEnabled', true);
+                    
+                    // PPTX SVG模式配置
+                    conversionOptions.pptxSvgMode = config.get<string>('pptxSvgMode', 'title_and_svg');
+                } else if (conversionType === 'md-to-html') {
+                    // HTML转换的SVG配置
+                    conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
+                    conversionOptions.svgConversionMethod = config.get<string>('svgConversionMethod', 'auto');
+                    conversionOptions.svgOutputWidth = config.get<number>('svgOutputWidth', 800);
+                    conversionOptions.svgFallbackEnabled = config.get<boolean>('svgFallbackEnabled', true);
                 }
             } else if (conversionType === 'office-to-md') {
                 conversionOptions = {

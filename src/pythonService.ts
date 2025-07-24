@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
-type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png';
+type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-svg-to-docx' | 'office-to-md' | 'diagram-to-png';
 
 interface PythonResponse {
     success: boolean;
@@ -93,6 +93,27 @@ export function executePythonScript(
             // 添加 Tesseract 命令/路径参数
             if (conversionOptions.tesseractCmd) {
                 args.push('--tesseract-cmd', conversionOptions.tesseractCmd);
+            }
+            
+            // 添加SVG转换参数
+            if (conversionOptions.svgDpi !== undefined) {
+                args.push('--svg-dpi', conversionOptions.svgDpi.toString());
+            }
+            if (conversionOptions.svgConversionMethod) {
+                args.push('--svg-conversion-method', conversionOptions.svgConversionMethod);
+            }
+            if (conversionOptions.svgOutputWidth !== undefined) {
+                args.push('--svg-output-width', conversionOptions.svgOutputWidth.toString());
+            }
+            if (conversionOptions.svgFallbackEnabled !== undefined) {
+                if (conversionOptions.svgFallbackEnabled) {
+                    args.push('--svg-fallback-enabled');
+                }
+            }
+            
+            // 添加PPTX SVG模式参数
+            if (conversionOptions.pptxSvgMode) {
+                args.push('--pptx-svg-mode', conversionOptions.pptxSvgMode);
             }
         }
         

@@ -262,6 +262,10 @@ class DiagramToPngConverter(BaseConverter):
             return False
             
         try:
+            # 动态导入以避免NameError
+            from svglib.svglib import renderSVG
+            from reportlab.graphics import renderPM
+            
             drawing = renderSVG.renderSVG(str(svg_file))
             renderPM.drawToFile(drawing, str(output_file), fmt="PNG", dpi=dpi)
             return True
@@ -275,6 +279,9 @@ class DiagramToPngConverter(BaseConverter):
             return False
             
         try:
+            # 动态导入以避免NameError
+            import cairosvg
+            
             with open(svg_file, 'rb') as f:
                 svg_data = f.read()
             
@@ -340,4 +347,4 @@ class DiagramToPngConverter(BaseConverter):
         # Draw.io转换需要特殊的工具，这里提供一个基本实现
         self.logger.warning("Draw.io转换功能需要额外的工具支持")
         self.logger.info("请考虑手动导出为SVG格式，然后使用SVG转换功能")
-        return False 
+        return False

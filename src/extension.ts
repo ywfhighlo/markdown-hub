@@ -82,4 +82,4 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
     console.log('Markdown Hub is now deactivated.');
-} 
+}

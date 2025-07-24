@@ -1,6 +1,16 @@
 from typing import List, Optional
 import os
 from .base_converter import BaseConverter
+from .svg_processor import SVGProcessor
+# 尝试导入AdaptiveSVGConverter
+try:
+    from ..svg.adaptive_svg_converter import AdaptiveSVGConverter
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from svg.adaptive_svg_converter import AdaptiveSVGConverter
 import json
 import subprocess
 import platform
@@ -9,6 +19,18 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 import logging
+
+# python-pptx相关导入（用于title_and_svg模式）
+try:
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN
+    from PIL import Image
+    pptx_available = True
+except ImportError:
+    pptx_available = False
 
 # 平台检测和条件导入（迁移自tools/md_to_docx.py）
 IS_WINDOWS = platform.system() == "Windows"
@@ -47,12 +69,39 @@ class MdToOfficeConverter(BaseConverter):
         self.email = kwargs.get('email', '')
         self.promote_headings = kwargs.get('promote_headings', False)
         
+        # PPTX SVG 转换模式配置
+        self.pptx_svg_mode = kwargs.get('pptx_svg_mode', 'full')
+        # 验证配置值
+        if self.pptx_svg_mode not in ['full', 'title_and_svg']:
+            self.logger.warning(f"Invalid pptx_svg_mode '{self.pptx_svg_mode}', defaulting to 'full'")
+            self.pptx_svg_mode = 'full'
+        
         # 模板路径现在由前端直接提供，后端不再进行复杂的查找
         self.template_path = None
         if self.output_format in ['docx', 'pdf']:
             self.template_path = self.docx_template_path
         elif self.output_format == 'pptx':
             self.template_path = self.pptx_template_path
+        
+        # 初始化自适应SVG转换器 - 将临时文件放到输出目录的svg_temp子目录
+        svg_temp_dir = self.output_dir / 'svg_temp'
+        self.adaptive_svg_converter = AdaptiveSVGConverter(
+            output_dir=str(svg_temp_dir),
+            dpi=kwargs.get('svg_dpi', 300),
+            conversion_method=kwargs.get('svg_conversion_method', 'auto'),
+            output_width=kwargs.get('svg_output_width', 800),
+            fallback_enabled=kwargs.get('svg_fallback_enabled', True),
+            include_xml_blocks=kwargs.get('svg_include_xml_blocks', True)
+        )
+        
+        # 初始化标准SVG处理器（用于向后兼容）
+        self.svg_processor = SVGProcessor(
+            output_dir=str(svg_temp_dir),
+            dpi=kwargs.get('svg_dpi', 300),
+            conversion_method=kwargs.get('svg_conversion_method', 'auto'),
+            output_width=kwargs.get('svg_output_width', 800),
+            fallback_enabled=kwargs.get('svg_fallback_enabled', True)
+        )
 
     def convert(self, input_path: str) -> List[str]:
         """
@@ -120,58 +169,945 @@ class MdToOfficeConverter(BaseConverter):
         input_path = Path(input_file)
         output_file_path = self.output_dir / f"{input_path.stem}.pptx"
 
-        processed_content, temp_images = self._preprocess_markdown(input_file)
-        if processed_content is None:
-            return None
+        # 根据pptx_svg_mode选择不同的处理流程
+        if self.pptx_svg_mode == 'title_and_svg':
+            return self._process_title_and_svg_mode(input_file, output_file_path)
+        else:
+            return self._process_full_mode(input_file, output_file_path)
 
-        processed_md_file = input_path.with_name(f"{input_path.stem}_processed_{os.getpid()}.md")
-        processed_md_file.write_text(processed_content, encoding='utf-8')
+    def _process_title_and_svg_mode(self, input_file: str, output_file_path: Path) -> Optional[str]:
+        """处理title_and_svg模式的PPTX转换"""
+        if not pptx_available:
+            self.logger.error("python-pptx库未安装，无法使用title_and_svg模式")
+            return self._process_full_mode(input_file, output_file_path)
         
-        all_temp_files = temp_images + [str(processed_md_file)]
-
+        self.logger.info(f"使用title_and_svg模式转换: {input_file}")
+        
         try:
-            if not self._check_tool_availability("pandoc"):
-                self.logger.error("Pandoc not found. Please install pandoc and add it to your PATH.")
-                raise FileNotFoundError("Pandoc not found. Please install pandoc and add it to your system's PATH.")
-
-            cmd = [
-                'pandoc', str(processed_md_file),
-                '-o', str(output_file_path),
-                '--resource-path=' + str(input_path.parent),
-                '--quiet'
-            ]
+            # 读取并预处理Markdown内容
+            processed_content, temp_files = self._preprocess_markdown(input_file)
+            if processed_content is None:
+                return None
             
-            # 只有在提供了模板路径时才使用 --reference-doc
-            if self.template_path and Path(self.template_path).exists():
-                self.logger.info(f"使用PPTX模板: {self.template_path}")
-                cmd.extend(['--reference-doc', self.template_path])
-            else:
-                self.logger.info("未提供PPTX模板，使用Pandoc默认样式")
-
-            if self.promote_headings:
-                cmd.append('--shift-heading-level-by=-1')
+            # 提取标题
+            input_path = Path(input_file)
+            title = self._get_title_from_md(processed_content, input_path)
             
-            # Pandoc不支持为pptx注入变量，但我们保留这个结构以备将来扩展
-            # title = self._get_title_from_md(processed_content, input_path)
-
-            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+            # 解析内容
+            sections = self._parse_title_and_svg_mode(processed_content, title)
+            
+            # 创建演示文稿
+            prs = self._create_presentation_from_template()
+            
+            # 获取Markdown文件所在目录
+            md_dir = input_path.parent
+            
+            # 处理每个section
+            for section in sections:
+                if section['type'] == 'title':
+                    self._create_title_slide(prs, section['title'])
+                elif section['type'] == 'svg':
+                    self._create_svg_slide(prs, section, md_dir)
+            
+            # 保存演示文稿
+            prs.save(str(output_file_path))
             
             self.logger.info(f"Successfully converted {input_file} to {output_file_path}")
             return str(output_file_path)
-
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            error_message = e.stderr if hasattr(e, 'stderr') else str(e)
-            self.logger.error(f"Failed during PPTX conversion: {error_message}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed during title_and_svg mode conversion: {e}")
             return None
         finally:
-            self._cleanup_temp_files(all_temp_files, str(processed_md_file), input_file)
+            # 清理临时文件
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except Exception as e:
+                    self.logger.warning(f"Failed to remove temp file {temp_file}: {e}")
+    
+    def _process_full_mode(self, input_file: str, output_file_path: Path) -> Optional[str]:
+        """处理full模式的PPTX转换（使用python-pptx创建多张幻灯片）"""
+        if not pptx_available:
+            self.logger.error("python-pptx库未安装，无法使用full模式")
+            return None
+        
+        self.logger.info(f"使用full模式转换: {input_file}")
+        
+        try:
+            # 读取并预处理Markdown内容
+            processed_content, temp_files = self._preprocess_markdown(input_file)
+            if processed_content is None:
+                return None
+            
+            # 提取标题
+            input_path = Path(input_file)
+            title = self._get_title_from_md(processed_content, input_path)
+            
+            # 解析内容
+            sections = self._parse_full_mode(processed_content, title)
+            
+            # 创建演示文稿
+            prs = self._create_presentation_from_template()
+            
+            # 获取Markdown文件所在目录
+            md_dir = input_path.parent
+            
+            # 处理每个section
+            for section in sections:
+                if section['type'] == 'content':
+                    if section['level'] == 1 and not section['content']:
+                        # 标题页
+                        self._create_title_slide(prs, section['title'])
+                    else:
+                        # 内容页
+                        self._create_content_slide(prs, section, md_dir)
+            
+            # 保存演示文稿
+            prs.save(str(output_file_path))
+            
+            self.logger.info(f"Successfully converted {input_file} to {output_file_path}")
+            return str(output_file_path)
+            
+        except Exception as e:
+            self.logger.error(f"Failed during full mode conversion: {e}")
+            return None
+        finally:
+            # 清理临时文件
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except Exception as e:
+                    self.logger.warning(f"Failed to remove temp file {temp_file}: {e}")
+    
+    def _parse_title_and_svg_mode(self, content: str, title: str) -> List[dict]:
+        """仅标题和SVG模式的解析（移植自MdToPptConverter）"""
+        sections = []
+        
+        # 提取所有标题和图片的位置信息
+        heading_pattern = re.compile(r'^(#+)\s+(.+)$', re.MULTILINE)
+        headings = list(heading_pattern.finditer(content))
+        
+        # 提取所有SVG图片引用（包括已转换的PNG）
+        svg_pattern = re.compile(r'!\[([^\]]*)\]\(([^\)]+\.(svg|png))\)', re.IGNORECASE)
+        svg_matches = list(svg_pattern.finditer(content))
+        
+        # 添加文档标题作为第一页（只有当标题不为空且不与第一个标题重复时）
+        first_heading_title = headings[0].group(2).strip() if headings else None
+        if title and title != first_heading_title:
+            sections.append({
+                'level': 1, 
+                'title': title, 
+                'content': [],
+                'type': 'title',
+                'position': 0
+            })
+        
+        # 创建包含标题和图片位置信息的列表
+        items = []
+        
+        # 添加标题信息
+        for match in headings:
+            level = len(match.group(1))
+            heading_text = match.group(2).strip()
+            items.append({
+                'type': 'title',
+                'level': level,
+                'title': heading_text,
+                'position': match.start()
+            })
+        
+        # 添加图片信息
+        for match in svg_matches:
+            alt_text = match.group(1)
+            img_path = match.group(2)
+            items.append({
+                'type': 'svg',
+                'level': 2,
+                'title': alt_text or f"图片: {os.path.basename(img_path)}",
+                'content': [match.group(0)],  # 完整的图片markdown语法
+                'position': match.start()
+            })
+        
+        # 按位置排序
+        items.sort(key=lambda x: x['position'])
+        
+        # 将图片放在其前面最近的标题后面
+        current_title_sections = []
+        if title and title != first_heading_title:
+            current_title_sections = [sections[0]]  # 文档标题
+        
+        for item in items:
+            if item['type'] == 'title':
+                # 添加标题页
+                title_section = {
+                    'level': item['level'],
+                    'title': item['title'],
+                    'content': [],
+                    'type': 'title'
+                }
+                sections.append(title_section)
+                current_title_sections.append(title_section)
+            elif item['type'] == 'svg':
+                # 图片放在最近的标题后面
+                svg_section = {
+                    'level': item['level'],
+                    'title': item['title'],
+                    'content': item['content'],
+                    'type': 'svg'
+                }
+                sections.append(svg_section)
+        
+        return sections
+    
+    def _parse_full_mode(self, content: str, title: str) -> List[dict]:
+        """完整模式的解析：标题占一页，内容根据情况分页，SVG单独占一页"""
+        sections = []
+        
+        # 提取所有标题行
+        heading_pattern = re.compile(r'^(#+)\s+(.+)$', re.MULTILINE)
+        headings = list(heading_pattern.finditer(content))
+        
+        # 添加文档标题作为第一页（只有当标题不为空且不与第一个标题重复时）
+        first_heading_title = headings[0].group(2).strip() if headings else None
+        if title and title != first_heading_title:
+            sections.append({
+                'level': 1, 
+                'title': title, 
+                'content': [],
+                'type': 'content'
+            })
+        
+        # 处理每个标题和其内容
+        for i, match in enumerate(headings):
+            level = len(match.group(1))
+            heading_text = match.group(2).strip()
+            
+            # 添加标题页
+            sections.append({
+                'level': level,
+                'title': heading_text,
+                'content': [],
+                'type': 'content'
+            })
+            
+            # 提取该标题下的内容
+            content_start = match.end()
+            if i + 1 < len(headings):
+                content_end = headings[i + 1].start()
+            else:
+                content_end = len(content)
+            
+            section_content = content[content_start:content_end].strip()
+            
+            if section_content:
+                # 将内容按段落分割
+                content_lines = section_content.split('\n')
+                
+                # 过滤空行
+                content_lines = [line for line in content_lines if line.strip()]
+                
+                if content_lines:
+                    # 添加内容页
+                    sections.append({
+                        'level': level + 1,
+                        'title': heading_text,
+                        'content': content_lines,
+                        'type': 'content'
+                    })
+        
+        # 处理没有标题的情况（直接添加内容到第一节）
+        if not headings and title:
+            content_lines = content.strip().split('\n')
+            content_lines = [line for line in content_lines if line.strip()]
+            if content_lines:
+                sections[0]['content'] = content_lines
+        
+        # 处理文件没有内容的情况
+        if not sections:
+            sections.append({'level': 1, 'title': title or '无标题', 'content': [], 'type': 'content'})
+        
+        return sections
+    
+    def _create_presentation_from_template(self) -> 'Presentation':
+        """根据模板创建演示文稿，如果未提供模板则创建空白演示文稿"""
+        if self.template_path and Path(self.template_path).exists():
+            self.logger.info(f"正在加载模板: {self.template_path}")
+            try:
+                prs = Presentation(self.template_path)
+                
+                # 完全移除所有示例幻灯片，只保留布局
+                while len(prs.slides) > 0:
+                    rId = prs.slides._sldIdLst[-1].rId
+                    prs.part.drop_rel(rId)
+                    del prs.slides._sldIdLst[-1]
+
+                self.logger.info(f"成功加载模板并移除所有示例幻灯片: {self.template_path}")
+                return prs
+            except Exception as e:
+                self.logger.error(f"加载模板失败: {self.template_path}, 错误: {e}")
+                self.logger.info("将创建空白演示文稿作为备用方案。")
+                return Presentation()
+        else:
+            self.logger.info("未提供模板或模板不存在，正在创建空白演示文稿。")
+            return Presentation()
+    
+    def _create_title_slide(self, prs: 'Presentation', title_text: str):
+        """创建标题幻灯片"""
+        # 使用占位符最少的布局
+        min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+        layout_to_use = None
+        for layout in prs.slide_layouts:
+            if len(layout.placeholders) == min_placeholders:
+                layout_to_use = layout
+                break
+        
+        slide = prs.slides.add_slide(layout_to_use)
+        
+        # 删除所有占位符形状
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                shapes_to_remove.append(shape)
+        
+        for shape in shapes_to_remove:
+            try:
+                slide.shapes._spTree.remove(shape._element)
+            except Exception as e:
+                self.logger.warning(f"删除占位符时出错: {e}")
+        
+        # 设置白色背景
+        try:
+            # 方法1：通过slide.background设置
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(255, 255, 255)
+        except Exception as e:
+            try:
+                # 方法2：通过添加白色矩形作为背景
+                from pptx.enum.shapes import MSO_SHAPE
+                bg_shape = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE, 0, 0, 
+                    slide.slide_layout.slide_master.slide_width,
+                    slide.slide_layout.slide_master.slide_height
+                )
+                bg_fill = bg_shape.fill
+                bg_fill.solid()
+                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
+                # 将背景形状移到最底层
+                slide.shapes._spTree.insert(2, slide.shapes._spTree.pop())
+                self.logger.info("使用矩形背景方法设置白色背景")
+            except Exception as e2:
+                self.logger.warning(f"设置背景颜色失败: 方法1={e}, 方法2={e2}")
+        
+        # 直接创建文本框，不使用占位符
+        title_left = Inches(1)
+        title_top = Inches(2.5)
+        title_width = prs.slide_width - Inches(2)
+        title_height = Inches(2)
+        
+        title_box = slide.shapes.add_textbox(title_left, title_top, title_width, title_height)
+        title_frame = title_box.text_frame
+        title_frame.clear()
+        
+        p = title_frame.paragraphs[0]
+        p.text = title_text
+        p.alignment = PP_ALIGN.CENTER
+        p.font.size = Pt(44)
+        p.font.bold = True
+        p.font.name = "微软雅黑"
+    
+    def _create_content_slide(self, prs: 'Presentation', section: dict, md_dir: Path):
+        """创建内容幻灯片（包含标题、文本内容和图片）"""
+        # 判断是否为纯标题页（没有内容）
+        is_title_only = not section.get('content') or not any(content.strip() for content in section['content'])
+        
+        if is_title_only:
+            # 纯标题页：使用标题页布局
+            layout_to_use = None
+            # 查找标题页布局
+            for layout in prs.slide_layouts:
+                name_lower = layout.name.lower()
+                if any(keyword in name_lower for keyword in ['title', '标题', 'section']):
+                    layout_to_use = layout
+                    break
+            
+            # 如果没有找到标题页布局，使用占位符最少的布局
+            if layout_to_use is None:
+                min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+                for layout in prs.slide_layouts:
+                    if len(layout.placeholders) == min_placeholders:
+                        layout_to_use = layout
+                        break
+        else:
+            # 有内容的页面：优先使用内容页布局（Blank布局）
+            layout_to_use = None
+            
+            # 首先查找Blank布局或其他内容页布局
+            for layout in prs.slide_layouts:
+                name_lower = layout.name.lower()
+                if any(keyword in name_lower for keyword in ['blank', '空白', 'content', '内容']):
+                    if layout_to_use is None or len(layout.placeholders) < len(layout_to_use.placeholders):
+                        layout_to_use = layout
+            
+            # 如果没有找到合适的内容页布局，使用占位符最少的布局
+            if layout_to_use is None:
+                min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+                for layout in prs.slide_layouts:
+                    if len(layout.placeholders) == min_placeholders:
+                        layout_to_use = layout
+                        break
+        
+        slide = prs.slides.add_slide(layout_to_use)
+        
+        # 删除所有占位符形状
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                shapes_to_remove.append(shape)
+        
+        for shape in shapes_to_remove:
+            try:
+                slide.shapes._spTree.remove(shape._element)
+            except Exception as e:
+                self.logger.warning(f"删除占位符时出错: {e}")
+        
+        try:
+            # 根据是否为纯标题页决定标题位置和对齐方式
+            if is_title_only:
+                # 纯标题页：标题居中显示
+                title_left = Inches(1)
+                title_top = prs.slide_height / 2 - Inches(0.6)  # 垂直居中
+                title_width = prs.slide_width - Inches(2)
+                title_height = Inches(1.2)
+                title_alignment = PP_ALIGN.CENTER
+            else:
+                # 有内容的页面：标题在顶部
+                title_left = Inches(0.8)
+                title_top = Inches(0.6)
+                title_width = prs.slide_width - Inches(1.6)  # 左右各0.8英寸边距
+                title_height = Inches(1.0)
+                title_alignment = PP_ALIGN.LEFT
+            
+            title_box = slide.shapes.add_textbox(title_left, title_top, title_width, title_height)
+            title_frame = title_box.text_frame
+            title_frame.clear()
+            
+            p = title_frame.paragraphs[0]
+            p.text = section['title']
+            p.alignment = title_alignment
+            p.font.size = Pt(32)
+            p.font.bold = True
+            p.font.name = "微软雅黑"
+            
+            # 处理内容（只有非纯标题页才处理内容）
+            if not is_title_only and section['content']:
+                content_text = '\n'.join(section['content'])
+                
+                # 检查是否包含图片
+                img_matches = list(re.finditer(r'!\[[^\]]*\]\(([^\)]+)\)', content_text))
+                
+                if img_matches:
+                    # 包含图片的情况：分别处理文本和图片
+                    text_content = content_text
+                    
+                    # 移除图片引用，只保留文本
+                    for match in reversed(img_matches):  # 从后往前删除，避免位置偏移
+                        text_content = text_content[:match.start()] + text_content[match.end():]
+                    
+                    text_content = text_content.strip()
+                    
+                    # 添加文本内容（如果有）
+                    if text_content:
+                        # 在标题和内容之间添加红线分隔
+                        line_left = Inches(0.8)
+                        line_top = Inches(1.7)
+                        line_width = prs.slide_width - Inches(1.6)
+                        line_height = Inches(0.01)  # 1pt高度的细线
+                        
+                        from pptx.enum.shapes import MSO_SHAPE
+                        red_line = slide.shapes.add_shape(
+                            MSO_SHAPE.RECTANGLE, line_left, line_top, line_width, line_height
+                        )
+                        red_line_fill = red_line.fill
+                        red_line_fill.solid()
+                        red_line_fill.fore_color.rgb = RGBColor(200, 200, 200)  # 浅灰色
+                        red_line.line.color.rgb = RGBColor(200, 200, 200)  # 浅灰色边框
+                        
+                        # 直接创建文本框，不使用占位符 - 增加安全边距
+                        content_left = Inches(0.8)
+                        content_top = Inches(1.9)  # 调整位置，在红线下方
+                        content_width = prs.slide_width - Inches(1.6)  # 左右各0.8英寸边距
+                        content_height = prs.slide_height - Inches(2.7)  # 调整高度，留出更多空间
+                        
+                        content_box = slide.shapes.add_textbox(content_left, content_top, content_width, content_height)
+                        content_frame = content_box.text_frame
+                        content_frame.clear()
+                        content_frame.word_wrap = True  # 启用自动换行
+                        content_frame.auto_size = None  # 禁用自动调整大小
+                        
+                        content_p = content_frame.paragraphs[0]
+                        content_p.text = text_content
+                        content_p.alignment = PP_ALIGN.LEFT
+                        content_p.font.size = Pt(18)
+                        content_p.font.name = "微软雅黑"
+                    
+                    # 处理图片（每个图片单独占一页）
+                    for match in img_matches:
+                        img_path = match.group(1)
+                        if not os.path.isabs(img_path):
+                            img_path = os.path.join(md_dir, img_path)
+                        
+                        # 为每个图片创建单独的幻灯片
+                        self._create_image_slide(prs, img_path, md_dir)
+                        
+                else:
+                    # 纯文本内容，使用分页处理
+                    self._add_text_with_pagination(prs, slide, content_text, section['title'])
+                    
+        except Exception as e:
+            self.logger.error(f"创建内容幻灯片时出错: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+    
+    def _add_text_with_pagination(self, prs: 'Presentation', slide, text: str, title: str = ""):
+        """添加文本并处理自动换行和分页"""
+        try:
+            # 在标题和内容之间添加红线分隔
+            line_left = Inches(0.8)
+            line_top = Inches(1.7)
+            line_width = prs.slide_width - Inches(1.6)
+            line_height = Inches(0.01)  # 1pt高度的细线
+            
+            from pptx.enum.shapes import MSO_SHAPE
+            red_line = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, line_left, line_top, line_width, line_height
+            )
+            red_line_fill = red_line.fill
+            red_line_fill.solid()
+            red_line_fill.fore_color.rgb = RGBColor(200, 200, 200)  # 浅灰色
+            red_line.line.color.rgb = RGBColor(200, 200, 200)  # 浅灰色边框
+            
+            # 文本框配置 - 增加更安全的边距
+            content_left = Inches(0.8)
+            content_top = Inches(1.9)  # 调整位置，在红线下方
+            content_width = prs.slide_width - Inches(1.6)  # 左右各0.8英寸边距
+            content_height = prs.slide_height - Inches(2.7)  # 调整高度，留出更多空间
+            
+            # 创建文本框并启用自动换行
+            content_box = slide.shapes.add_textbox(content_left, content_top, content_width, content_height)
+            content_frame = content_box.text_frame
+            content_frame.clear()
+            content_frame.word_wrap = True  # 启用自动换行
+            content_frame.auto_size = None  # 禁用自动调整大小
+            
+            # 字体配置
+            font_size = Pt(18)
+            font_name = "微软雅黑"
+            line_height = 1.2
+            
+            # 直接添加文本，让PowerPoint自动处理换行
+            content_p = content_frame.paragraphs[0]
+            content_p.text = text
+            content_p.alignment = PP_ALIGN.LEFT
+            content_p.font.size = font_size
+            content_p.font.name = font_name
+            content_p.line_spacing = line_height
+
+                
+        except Exception as e:
+            self.logger.error(f"添加文本时出错: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+    
+    def _create_new_content_slide(self, prs: 'Presentation', title: str = ""):
+        """创建新的内容幻灯片用于分页"""
+        # 优先使用内容页布局（Blank布局），如果没有则使用占位符最少的布局
+        layout_to_use = None
+        
+        # 首先查找Blank布局或其他内容页布局
+        for layout in prs.slide_layouts:
+            name_lower = layout.name.lower()
+            if any(keyword in name_lower for keyword in ['blank', '空白', 'content', '内容']):
+                if layout_to_use is None or len(layout.placeholders) < len(layout_to_use.placeholders):
+                    layout_to_use = layout
+        
+        # 如果没有找到合适的内容页布局，使用占位符最少的布局
+        if layout_to_use is None:
+            min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+            for layout in prs.slide_layouts:
+                if len(layout.placeholders) == min_placeholders:
+                    layout_to_use = layout
+                    break
+        
+        slide = prs.slides.add_slide(layout_to_use)
+        
+        # 删除所有占位符形状
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                shapes_to_remove.append(shape)
+        
+        for shape in shapes_to_remove:
+            try:
+                slide.shapes._spTree.remove(shape._element)
+            except Exception as e:
+                self.logger.warning(f"删除占位符时出错: {e}")
+        
+        # 设置白色背景
+        try:
+            # 方法1：通过slide.background设置
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(255, 255, 255)
+        except Exception as e:
+            try:
+                # 方法2：通过添加白色矩形作为背景
+                from pptx.enum.shapes import MSO_SHAPE
+                bg_shape = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE, 0, 0, 
+                    prs.slide_width, prs.slide_height
+                )
+                bg_fill = bg_shape.fill
+                bg_fill.solid()
+                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
+                # 将背景形状移到最底层
+                slide.shapes._spTree.insert(2, slide.shapes._spTree.pop())
+                self.logger.info("使用矩形背景方法设置白色背景")
+            except Exception as e2:
+                self.logger.warning(f"设置背景颜色失败: 方法1={e}, 方法2={e2}")
+        
+        # 如果有标题，添加标题 - 增加安全边距
+        if title:
+            title_left = Inches(0.8)
+            title_top = Inches(0.6)
+            title_width = prs.slide_width - Inches(1.6)  # 左右各0.8英寸边距
+            title_height = Inches(1.0)
+            
+            title_box = slide.shapes.add_textbox(title_left, title_top, title_width, title_height)
+            title_frame = title_box.text_frame
+            title_frame.clear()
+            
+            title_p = title_frame.paragraphs[0]
+            title_p.text = title + " (续)"
+            title_p.alignment = PP_ALIGN.LEFT  # 内容页标题左对齐
+            title_p.font.size = Pt(32)
+            title_p.font.bold = True
+            title_p.font.name = "微软雅黑"
+            
+            # 在标题和内容之间添加红线分隔
+            line_left = Inches(0.8)
+            line_top = Inches(1.7)
+            line_width = prs.slide_width - Inches(1.6)
+            line_height = Inches(0.02)  # 2pt高度的红线
+            
+            from pptx.enum.shapes import MSO_SHAPE
+            red_line = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, line_left, line_top, line_width, line_height
+            )
+            red_line_fill = red_line.fill
+            red_line_fill.solid()
+            red_line_fill.fore_color.rgb = RGBColor(200, 200, 200)  # 浅灰色
+            red_line.line.color.rgb = RGBColor(200, 200, 200)  # 浅灰色边框
+        
+        return slide
+    
+    def _create_image_slide(self, prs: 'Presentation', img_path: str, md_dir: Path):
+        """创建单独的图片幻灯片"""
+        # 优先使用内容页布局（Blank布局），如果没有则使用占位符最少的布局
+        layout_to_use = None
+        
+        # 首先查找Blank布局或其他内容页布局
+        for layout in prs.slide_layouts:
+            name_lower = layout.name.lower()
+            if any(keyword in name_lower for keyword in ['blank', '空白', 'content', '内容']):
+                if layout_to_use is None or len(layout.placeholders) < len(layout_to_use.placeholders):
+                    layout_to_use = layout
+        
+        # 如果没有找到合适的内容页布局，使用占位符最少的布局
+        if layout_to_use is None:
+            min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+            for layout in prs.slide_layouts:
+                if len(layout.placeholders) == min_placeholders:
+                    layout_to_use = layout
+                    break
+        
+        slide = prs.slides.add_slide(layout_to_use)
+        
+        # 删除所有占位符形状
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                shapes_to_remove.append(shape)
+        
+        for shape in shapes_to_remove:
+            try:
+                slide.shapes._spTree.remove(shape._element)
+            except Exception as e:
+                self.logger.warning(f"删除占位符时出错: {e}")
+        
+        # 设置白色背景
+        try:
+            # 方法1：通过slide.background设置
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(255, 255, 255)
+        except Exception as e:
+            try:
+                # 方法2：通过添加白色矩形作为背景
+                from pptx.enum.shapes import MSO_SHAPE
+                bg_shape = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE, 0, 0, 
+                    prs.slide_width, prs.slide_height
+                )
+                bg_fill = bg_shape.fill
+                bg_fill.solid()
+                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
+                # 将背景形状移到最底层
+                slide.shapes._spTree.insert(2, slide.shapes._spTree.pop())
+                self.logger.info("使用矩形背景方法设置白色背景")
+            except Exception as e2:
+                self.logger.warning(f"设置背景颜色失败: 方法1={e}, 方法2={e2}")
+        
+        try:
+            self.logger.info(f"处理图片: {img_path}")
+            
+            # 检查是否为SVG文件，如果是则需要转换
+            if img_path.lower().endswith('.svg'):
+                if not os.path.exists(img_path):
+                    self.logger.warning(f"SVG文件未找到: {img_path}")
+                    return
+                
+                # 使用SVGProcessor直接转换SVG文件
+                try:
+                    svg_temp_dir = self.output_dir / 'svg_temp'
+                    svg_temp_dir.mkdir(exist_ok=True)
+                    
+                    # 读取SVG内容
+                    with open(img_path, 'r', encoding='utf-8') as f:
+                        svg_content = f.read()
+                    
+                    # 生成PNG文件名
+                    png_filename = f"{Path(img_path).stem}.png"
+                    png_path = svg_temp_dir / png_filename
+                    
+                    # 转换SVG到PNG
+                    success = self.svg_processor.convert_svg_to_png(svg_content, png_path)
+                    if success and png_path.exists():
+                        img_path = str(png_path)
+                        self.logger.info(f"SVG转换成功: {img_path}")
+                    else:
+                        self.logger.warning(f"SVG转换失败，跳过图片: {img_path}")
+                        return
+                except Exception as e:
+                    self.logger.warning(f"SVG转换过程中出错: {e}，跳过图片")
+                    return
+            else:
+                # 非SVG文件，直接检查是否存在
+                if not os.path.exists(img_path):
+                    self.logger.warning(f"图片文件未找到: {img_path}")
+                    return
+            
+            # 居中显示图片
+            with Image.open(img_path) as img:
+                aspect_ratio = img.width / img.height
+                
+                # 计算最大可用空间
+                max_width = prs.slide_width - Inches(2)
+                max_height = prs.slide_height - Inches(2.5)
+                
+                # 根据宽高比计算实际尺寸
+                if aspect_ratio > max_width / max_height:
+                    img_width = max_width
+                    img_height = max_width / aspect_ratio
+                else:
+                    img_height = max_height
+                    img_width = max_height * aspect_ratio
+                
+                # 计算居中位置
+                img_left = (prs.slide_width - img_width) / 2
+                img_top = (prs.slide_height - img_height) / 2
+                
+                # 添加图片
+                slide.shapes.add_picture(img_path, img_left, img_top, width=img_width, height=img_height)
+                self.logger.info(f"成功添加图片到幻灯片: {img_path}")
+                
+        except Exception as e:
+            self.logger.error(f"添加图片时出错: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+    def _create_svg_slide(self, prs: 'Presentation', section: dict, md_dir: Path):
+        """创建SVG图片幻灯片（保留用于title_and_svg模式）"""
+        # 优先使用内容页布局（Blank布局），如果没有则使用占位符最少的布局
+        layout_to_use = None
+        
+        # 首先查找Blank布局或其他内容页布局
+        for layout in prs.slide_layouts:
+            name_lower = layout.name.lower()
+            if any(keyword in name_lower for keyword in ['blank', '空白', 'content', '内容']):
+                if layout_to_use is None or len(layout.placeholders) < len(layout_to_use.placeholders):
+                    layout_to_use = layout
+        
+        # 如果没有找到合适的内容页布局，使用占位符最少的布局
+        if layout_to_use is None:
+            min_placeholders = min(len(layout.placeholders) for layout in prs.slide_layouts)
+            for layout in prs.slide_layouts:
+                if len(layout.placeholders) == min_placeholders:
+                    layout_to_use = layout
+                    break
+        
+        slide = prs.slides.add_slide(layout_to_use)
+        
+        # 删除所有占位符形状
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if hasattr(shape, 'is_placeholder') and shape.is_placeholder:
+                shapes_to_remove.append(shape)
+        
+        for shape in shapes_to_remove:
+            try:
+                slide.shapes._spTree.remove(shape._element)
+            except Exception as e:
+                self.logger.warning(f"删除占位符时出错: {e}")
+        
+        # 设置白色背景
+        try:
+            # 方法1：通过slide.background设置
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            fill.fore_color.rgb = RGBColor(255, 255, 255)
+        except Exception as e:
+            try:
+                # 方法2：通过添加白色矩形作为背景
+                from pptx.enum.shapes import MSO_SHAPE
+                bg_shape = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE, 0, 0, 
+                    prs.slide_width, prs.slide_height
+                )
+                bg_fill = bg_shape.fill
+                bg_fill.solid()
+                bg_fill.fore_color.rgb = RGBColor(255, 255, 255)
+                # 将背景形状移到最底层
+                slide.shapes._spTree.insert(2, slide.shapes._spTree.pop())
+                self.logger.info("使用矩形背景方法设置白色背景")
+            except Exception as e2:
+                self.logger.warning(f"设置背景颜色失败: 方法1={e}, 方法2={e2}")
+        
+        try:
+            # 提取图片路径
+            content = section['content'][0] if section['content'] else ''
+            img_match = re.search(r'!\[[^\]]*\]\((.*?)\)', content)
+            if not img_match:
+                self.logger.warning("未找到图片引用")
+                return
+            
+            img_path = img_match.group(1)
+            if not os.path.isabs(img_path):
+                img_path = os.path.join(md_dir, img_path)
+            
+            self.logger.info(f"处理图片: {img_path}")
+            
+            # 检查是否为SVG文件，如果是则需要转换
+            if img_path.lower().endswith('.svg'):
+                if not os.path.exists(img_path):
+                    self.logger.warning(f"SVG文件未找到: {img_path}")
+                    return
+                
+                # 使用SVGProcessor直接转换SVG文件
+                try:
+                    svg_temp_dir = self.output_dir / 'svg_temp'
+                    svg_temp_dir.mkdir(exist_ok=True)
+                    
+                    # 读取SVG内容
+                    with open(img_path, 'r', encoding='utf-8') as f:
+                        svg_content = f.read()
+                    
+                    # 生成PNG文件名
+                    png_filename = f"{Path(img_path).stem}.png"
+                    png_path = svg_temp_dir / png_filename
+                    
+                    # 转换SVG到PNG
+                    success = self.svg_processor.convert_svg_to_png(svg_content, png_path)
+                    if success and png_path.exists():
+                        img_path = str(png_path)
+                        self.logger.info(f"SVG转换成功: {img_path}")
+                    else:
+                        self.logger.warning(f"SVG转换失败，跳过图片: {img_path}")
+                        return
+                except Exception as e:
+                    self.logger.warning(f"SVG转换过程中出错: {e}，跳过图片")
+                    return
+            else:
+                # 非SVG文件，直接检查是否存在
+                if not os.path.exists(img_path):
+                    self.logger.warning(f"图片文件未找到: {img_path}")
+                    return
+            
+            # 居中显示图片
+            with Image.open(img_path) as img:
+                aspect_ratio = img.width / img.height
+                
+                # 计算最大可用空间
+                max_width = prs.slide_width - Inches(2)
+                max_height = prs.slide_height - Inches(2.5)
+                
+                # 根据宽高比计算实际尺寸
+                if aspect_ratio > max_width / max_height:
+                    img_width = max_width
+                    img_height = max_width / aspect_ratio
+                else:
+                    img_height = max_height
+                    img_width = max_height * aspect_ratio
+                
+                # 计算居中位置
+                img_left = (prs.slide_width - img_width) / 2
+                img_top = (prs.slide_height - img_height) / 2
+                
+                # 添加图片
+                slide.shapes.add_picture(img_path, img_left, img_top, width=img_width, height=img_height)
+                self.logger.info(f"成功添加图片到幻灯片: {img_path}")
+                
+        except Exception as e:
+            self.logger.error(f"添加SVG图片时出错: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
 
     def _check_tool_availability(self, tool_name: str) -> bool:
         """Checks if an external tool is available in the system's PATH."""
         return shutil.which(tool_name) is not None
 
+    def _extract_original_title(self, content: str) -> str:
+        """从原始内容中提取标题（在任何处理之前）"""
+        try:
+            # 首先尝试从YAML front matter提取
+            pandoc_title_match = re.search(r'^---\s*\ntitle:\s*(.+?)\n', content, re.DOTALL)
+            if pandoc_title_match:
+                return pandoc_title_match.group(1).strip()
+            
+            # 然后尝试提取第一个一级标题
+            first_heading_match = re.search(r'^#\s+(.+)', content, re.MULTILINE)
+            if first_heading_match:
+                return first_heading_match.group(1).strip()
+        except Exception as e:
+            self.logger.warning(f"Could not extract original title due to error: {e}")
+        
+        return ""
+
     def _get_title_from_md(self, content: str, fallback_path: Path) -> str:
         """Extracts title from Markdown content."""
+        # 如果有模板且已保存原始标题，使用原始标题
+        has_template = self.template_path and Path(self.template_path).exists()
+        if has_template and hasattr(self, '_original_title') and self._original_title:
+            return self._original_title
+            
+        # 否则从当前内容中提取标题
         try:
             pandoc_title_match = re.search(r'^---\s*\ntitle:\s*(.+?)\n', content, re.DOTALL)
             if pandoc_title_match:
@@ -188,6 +1124,7 @@ class MdToOfficeConverter(BaseConverter):
     def _preprocess_markdown(self, md_file_path: str) -> (Optional[str], List[str]):
         """
         Pre-processes Markdown content for conversion.
+        Includes SVG processing and Mermaid diagram conversion.
         """
         try:
             with open(md_file_path, 'r', encoding='utf-8') as f:
@@ -198,11 +1135,55 @@ class MdToOfficeConverter(BaseConverter):
 
         temp_files = []
         md_dir = Path(md_file_path).parent
+        
+        # 在标题提级之前先保存原始标题（用于模板中的{{title}}）
+        self._original_title = self._extract_original_title(content)
 
-        content = re.sub(r'^(#+)\s*(\d+(\.\d+)*\s+)', r'\1 ', content, flags=re.MULTILINE)
-        content = re.sub(r'^(#+)\s*(\d+(\.\d+)*\.\s+)', r'\1 ', content, flags=re.MULTILINE)
+        # 标题序号处理
+        content = re.sub(r'^(#+)\s*(\d+(\.*\d+)*\s+)', r'\1 ', content, flags=re.MULTILINE)
+        content = re.sub(r'^(#+)\s*(\d+(\.*\d+)*\.\s+)', r'\1 ', content, flags=re.MULTILINE)
         content = re.sub(r'(!\[)(fig:.*?)(\])', r'\1\3', content)
+        
+        # 自定义标题提级处理：二级标题提为一级，一级标题保持一级
+        if self.promote_headings:
+            content = self._custom_promote_headings(content)
 
+        # SVG处理 - 根据输出格式选择处理方式
+        try:
+            self.logger.info(f"开始SVG处理，输出格式: {self.output_format}")
+            
+            if self.output_format == 'html':
+                # HTML格式使用标准SVG处理器，确保图片路径正确
+                md_filename = Path(md_file_path).stem
+                processed_content, svg_temp_files = self.svg_processor.process_markdown_content(
+                    content, md_dir, output_format='html', markdown_filename=md_filename
+                )
+                content = processed_content
+                temp_files.extend(svg_temp_files)
+                self.logger.info(f"HTML格式SVG处理完成，生成了 {len(svg_temp_files)} 个PNG文件")
+            else:
+                # 其他格式使用自适应SVG转换器
+                with self.adaptive_svg_converter as converter:
+                    md_filename = Path(md_file_path).stem
+                    processed_content, conversion_info = converter.process_markdown(content, md_dir, md_filename)
+                    content = processed_content
+                    
+                    # 获取转换统计信息
+                    stats = converter.get_conversion_statistics()
+                    if stats['svg_converted'] > 0:
+                        self.logger.info(f"SVG处理完成，转换了 {stats['svg_converted']} 个SVG块")
+                        self.logger.info(f"成功: {stats['svg_converted']}, 失败: {stats['conversion_failed']}")
+                        
+                        # 获取生成的文件列表
+                        if 'converted_files' in conversion_info:
+                            temp_files.extend(conversion_info['converted_files'])
+                        if 'files_created' in stats:
+                            temp_files.extend(stats['files_created'])
+        except Exception as e:
+            self.logger.error(f"SVG处理失败: {e}")
+            # SVG处理失败不影响其他功能，继续执行
+
+        # Mermaid图表处理
         if self._check_tool_availability("mmdc"):
             def replace_mermaid(match):
                 code = match.group(1)
@@ -218,11 +1199,58 @@ class MdToOfficeConverter(BaseConverter):
 
         return content, temp_files
     
-    def _cleanup_temp_files(self, temp_files: List[str], processed_file: str = None, original_file: str = None):
+    def _custom_promote_headings(self, content: str) -> str:
+        """
+        自定义标题提级处理：
+        - 有模板时：一级标题作为{{title}}变量，不出现在正文中；二级标题提升为一级标题
+        - 无模板时：一级标题转为不带序号的大字体正文；二级标题提升为一级标题
+        - 三级及以下标题相应提升一级
+        """
+        lines = content.split('\n')
+        processed_lines = []
+        has_template = self.template_path and Path(self.template_path).exists()
+        
+        for line in lines:
+            # 匹配标题行
+            heading_match = re.match(r'^(#+)\s+(.+)$', line)
+            if heading_match:
+                heading_level = len(heading_match.group(1))
+                heading_text = heading_match.group(2)
+                
+                if heading_level == 1:
+                    if has_template:
+                        # 有模板时：一级标题不出现在正文中（作为{{title}}变量使用）
+                        continue
+                    else:
+                        # 无模板时：一级标题转为不带序号的大字体正文
+                        processed_lines.append(f'**{heading_text}**\n')
+                elif heading_level == 2:
+                    # 二级标题提升为一级标题
+                    processed_lines.append(f'# {heading_text}')
+                elif heading_level >= 3:
+                    # 三级及以下标题提升一级
+                    new_level = heading_level - 1
+                    processed_lines.append('#' * new_level + f' {heading_text}')
+                else:
+                    processed_lines.append(line)
+            else:
+                processed_lines.append(line)
+        
+        return '\n'.join(processed_lines)
+    
+    def _cleanup_temp_files(self, temp_files: List[str], processed_file: str = None, original_file: str = None, preserve_png_for_html: bool = False):
         """清理临时文件"""
         for temp_file in temp_files:
             try:
                 if os.path.exists(temp_file):
+                    # HTML转换时保留PNG文件，删除SVG文件
+                    if preserve_png_for_html:
+                        if temp_file.lower().endswith('.png'):
+                            self.logger.info(f"HTML转换：保留PNG文件 {temp_file}")
+                            continue
+                        elif temp_file.lower().endswith('.svg'):
+                            self.logger.info(f"HTML转换：删除SVG文件 {temp_file}")
+                    
                     os.remove(temp_file)
             except Exception as e:
                 self.logger.warning(f"无法删除临时文件 {temp_file}: {e}")
@@ -234,6 +1262,16 @@ class MdToOfficeConverter(BaseConverter):
                     os.remove(processed_file)
             except Exception as e:
                 self.logger.warning(f"无法删除临时文件 {processed_file}: {e}")
+        
+        # 清理自适应SVG转换器的临时文件
+        try:
+            # HTML转换时需要特殊处理：保留PNG，删除SVG
+            if preserve_png_for_html:
+                self.adaptive_svg_converter.cleanup_selective(preserve_png=True, remove_svg=True)
+            else:
+                self.adaptive_svg_converter.cleanup()
+        except Exception as e:
+            self.logger.warning(f"自适应SVG转换器临时文件清理失败: {e}")
 
     def _convert_to_docx(self, input_file: str, to_pdf: bool = False) -> Optional[str]:
         """Converts a Markdown file to DOCX using a unified pandoc approach."""
@@ -274,8 +1312,9 @@ class MdToOfficeConverter(BaseConverter):
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
                 ]
-                if self.promote_headings:
-                    cmd.append('--shift-heading-level-by=-1')
+                # 标题提级现在在预处理阶段处理，不再使用Pandoc参数
+                # if self.promote_headings:
+                #     cmd.append('--shift-heading-level-by=-1')
                     
                 subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
 
@@ -331,8 +1370,9 @@ class MdToOfficeConverter(BaseConverter):
                 if self.template_path and Path(self.template_path).exists():
                     cmd.extend(['--reference-doc', self.template_path])
 
-                if self.promote_headings:
-                    cmd.append('--shift-heading-level-by=-1')
+                # 标题提级现在在预处理阶段处理，不再使用Pandoc参数
+                # if self.promote_headings:
+                #     cmd.append('--shift-heading-level-by=-1')
                 
                 subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
                 
@@ -477,7 +1517,9 @@ class MdToOfficeConverter(BaseConverter):
             self.logger.error(f"Failed during HTML conversion: {e.stderr if hasattr(e, 'stderr') else e}")
             return None
         finally:
-            self._cleanup_temp_files(all_temp_files, str(processed_md_file), input_file)
+            # HTML转换时不清理PNG文件，因为它们需要保留在svg_temp目录中供HTML引用
+            # 只清理处理过的markdown文件
+            self._cleanup_temp_files([str(processed_md_file)], str(processed_md_file), input_file, preserve_png_for_html=True)
 
     def _generate_html_toc(self, content: str) -> str:
         """Generates a nested HTML list for the Table of Contents."""
