@@ -47,7 +47,7 @@ class AutocoderConfig:
 
 # 全局变量 - 这些将通过init_autocoder函数设置
 g_debug_level = 'info'
-g_mask_style = 'nxp'
+g_mask_style = 'nxp5777m'
 g_language = 'english'
 g_input_excel_file_path = ''
 g_trans_flag = False
@@ -2493,6 +2493,10 @@ def autogen_pbcfg_c():
     fo.write("/******************************************************************************/\n")
     fo.write(f'#include "{g_module_name}.h"\n')
     fo.write("/******************************************************************************/\n")
+    
+    generate_memmap_macros(fo, g_module_name, ["CONFIG_DATA"])
+    fo.write("\n")
+    
     fo.write(f"static const {g_module_name}_ConfigType {g_module_name}_Config =\n{{\n")
     # 生成post build macro
     postbuild_macro_str = pick_postbuild_outof_ar_cfg_interfaces()
@@ -2639,10 +2643,10 @@ def tree_autogen_bf_h(reg_tree):
             fo.write(f"/** <#>brief Offset for {current_node.get_path().upper().replace(f'{g_product_prefix.upper()}',f'{g_product_prefix}')}_Bits.{entry['Field']} */\n")
             fo.write(f"#define {current_node.get_path().upper()}_{entry['Field'].upper()}_OFF ({bits_n}u)\n\n")                                   
 
-    if g_mask_style == 'nxp':
+    if g_mask_style == 'nxp5777m':
         fo.write("\n/*************************** 8/16/32bits MASK ************************************/\n")
     for current_node in reg_tree_leaf_list:
-        if g_mask_style != 'nxp': continue
+        if g_mask_style != 'nxp5777m': continue
         if 'reserved' in current_node.name.lower():
             continue
         if current_node.reg_sheet_dictlist == None:
@@ -2655,23 +2659,23 @@ def tree_autogen_bf_h(reg_tree):
                 continue
             if '' == entry['Field']:
                 continue
-            # nxp style MASK
+            # NXP5777M style MASK
             bits_n = parse_bits_mn(entry['Bits'])
-            nxp_mask_int = int(entry['Mask'], 16) << bits_n
-            nxp_mask_hex_str = "0x{:08X}UL".format(nxp_mask_int)  #缺省寄存器size为4bytes
+            nxp5777m_mask_int = int(entry['Mask'], 16) << bits_n
+            nxp5777m_mask_hex_str = "0x{:08X}UL".format(nxp5777m_mask_int)  #缺省寄存器size为4bytes
             mask_length = 32
             if regsize_byte_1_2_4 == 1:
-                nxp_mask_hex_str = "0x{:02X}U".format(nxp_mask_int)
+                nxp5777m_mask_hex_str = "0x{:02X}U".format(nxp5777m_mask_int)
                 mask_length = 8
             if regsize_byte_1_2_4 == 2:
-                nxp_mask_hex_str = "0x{:04X}U".format(nxp_mask_int)
+                nxp5777m_mask_hex_str = "0x{:04X}U".format(nxp5777m_mask_int)
                 mask_length = 16
-            nxp_mask_prefix = f"{g_module_name.upper()}_{current_node.name.upper()}_{entry['Field'].upper()}"
+            nxp5777m_mask_prefix = f"{g_module_name.upper()}_{current_node.name.upper()}_{entry['Field'].upper()}"
             fo.write(f"/** <#>brief {current_node.name}.{entry['Field']} */\n")
-            fo.write(f"#define {nxp_mask_prefix}_MASK  \t({nxp_mask_hex_str})\n")
-            fo.write(f"#define {nxp_mask_prefix}_SHIFT \t({bits_n}u)\n")
-            fo.write(f"#define {nxp_mask_prefix}_WIDTH \t({entry['Width']}u)\n")
-            fo.write(f"#define {nxp_mask_prefix}(x)    \t((({g_product_prefix}_UReg_{mask_length}Bit)((({g_product_prefix}_UReg_{mask_length}Bit)(x)) << {nxp_mask_prefix}_SHIFT)) & {nxp_mask_prefix}_MASK)\n")
+            fo.write(f"#define {nxp5777m_mask_prefix}_MASK  \t({nxp5777m_mask_hex_str})\n")
+            fo.write(f"#define {nxp5777m_mask_prefix}_SHIFT \t({bits_n}u)\n")
+            fo.write(f"#define {nxp5777m_mask_prefix}_WIDTH \t({entry['Width']}u)\n")
+            fo.write(f"#define {nxp5777m_mask_prefix}(x)    \t((({g_product_prefix}_UReg_{mask_length}Bit)((({g_product_prefix}_UReg_{mask_length}Bit)(x)) << {nxp5777m_mask_prefix}_SHIFT)) & {nxp5777m_mask_prefix}_MASK)\n")
             if entry['Width'] <=8:
                 getval_length = 8
             elif entry['Width'] <=16:
@@ -2679,9 +2683,9 @@ def tree_autogen_bf_h(reg_tree):
             elif entry['Width'] <=32:
                 getval_length = 32
             else:
-                logger.error(f"Width {entry['Width']} is too large for {nxp_mask_prefix}_GET")
+                logger.error(f"Width {entry['Width']} is too large for {nxp5777m_mask_prefix}_GET")
                 getval_length = 32              
-            fo.write(f"#define {nxp_mask_prefix}_GET(y)\t(({g_product_prefix}_UReg_{getval_length}Bit)((({g_product_prefix}_UReg_{mask_length}Bit)(y) & {nxp_mask_prefix}_MASK) >> {nxp_mask_prefix}_SHIFT))\n\n")
+            fo.write(f"#define {nxp5777m_mask_prefix}_GET(y)\t(({g_product_prefix}_UReg_{getval_length}Bit)((({g_product_prefix}_UReg_{mask_length}Bit)(y) & {nxp5777m_mask_prefix}_MASK) >> {nxp5777m_mask_prefix}_SHIFT))\n\n")
 
     fo.write("\n")
     fo.write(f"#endif /*{g_product_prefix.upper()}{g_module_name.upper()}_BF_H */\n")
@@ -2883,6 +2887,7 @@ def pick_ecuctype_outof_ar_cfg_interfaces(ecuc_type, cfgclass = 'Pre-Compile'):
         description_str = dict['Description'].replace('\n','')
         default_value_str = dict['Default value'].strip()
         if ecuc_type == 'EcucIntegerParamDef' and 'Published-Information' in cfgclass: default_value_str = f'({default_value_str}U)'
+        if ecuc_type == 'EcucIntegerParamDef' and 'Pre-Compile' in cfgclass: default_value_str = f'({default_value_str}U)'
         if 'DemEventParameter' in dict['Range']: #and ecuc_type == 'EcucSymbolicNameReferenceDef' and 'Pre-Compile' in cfgclass:
             default_value_str = f'(DemConf_DemEventParameter_{name_str})'
             dem_report_string = dem_error_handling_to_dem_report_string(name_str)            
@@ -2932,6 +2937,7 @@ def pick_pre_compile_outof_ar_cfg_interfaces():
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucBooleanParamDef', 'Pre-Compile')
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucEnumerationParamDef', 'Pre-Compile')
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucIntegerParamDef', 'Pre-Compile')
+    write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucFloatParamDef', 'Pre-Compile')
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucStringParamDef', 'Pre-Compile')
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucReferenceDef', 'Pre-Compile')
     write_str += pick_ecuctype_outof_ar_cfg_interfaces('EcucSymbolicNameReferenceDef', 'Pre-Compile')
@@ -2958,6 +2964,7 @@ def pick_typemacro_outof_ar_type_definitions(filter_file):
             name_str = dict['Syntax']
             type_str = dict['Type'].split('-')[1].strip()
             description_str = dict['Description']
+            description_str = description_str.strip().replace('\n',g_notes_format_str)
             write_str += f"\n"
             write_str += f"/** <#>brief   \t\t{name_str}\n"
             write_str += f" *  <#>details \t\t{description_str}\n"
@@ -3150,6 +3157,18 @@ def pick_struct_outof_ar_type_definitions(filter_file):
                 write_str += f"\t{struct_member:<30}\t/* {member_desc_str} */\n"
             write_str += f"}} {name_str};\n"            
     return write_str
+
+def pick_filelist_outof_ar_type_definitions():
+    filelist = []
+    # 生成struct
+    for dict in g_ar_type_definitions_dictlist:
+        if dict['File'] == f'{g_module_name}.h': continue
+        if dict['File'] == f'{g_product_prefix}{g_module_name}.h': continue
+
+        for key,value in dict.items():
+            filelist.append(dict['File'])
+    filelist = list(set(filelist))  # 去重          
+    return filelist
         
 def build_g_ar_type_definitions_to_h(filename,fo,safety_enable_flag):
     # 生成 ErrorCodesMacro, EventMacro
@@ -3258,6 +3277,129 @@ def build_g_apis_local_line_to_c(fo,dictlist):
 
         fo.write(f"\n{function_syntax};\n")
                 
+# 在文件开头定义所有可能的section类型
+MEMMAP_SECTIONS = {
+    "CONFIG_DATA": [
+        "CONFIG_DATA_8",
+        "CONFIG_DATA_16",
+        "CONFIG_DATA_32",
+        "CONFIG_DATA_UNSPECIFIED",
+        "CONFIG_DATA_8_NO_CACHEABLE",
+        "CONFIG_DATA_16_NO_CACHEABLE",
+        "CONFIG_DATA_32_NO_CACHEABLE",
+        "CONFIG_DATA_UNSPECIFIED_NO_CACHEABLE",
+    ],
+    "CONST": [
+        "CONST_BOOLEAN",
+        "CONST_8",
+        "CONST_16",
+        "CONST_32",
+        "CONST_UNSPECIFIED",
+    ],
+    "CODE": [
+        "CODE",
+        "RAMCODE",
+        "CODE_AC",
+    ],
+    "VAR_CLEARED": [
+        "VAR_CLEARED_BOOLEAN",
+        "VAR_CLEARED_8",
+        "VAR_CLEARED_16",
+        "VAR_CLEARED_32",
+        "VAR_CLEARED_UNSPECIFIED",
+        "VAR_CLEARED_BOOLEAN_NO_CACHEABLE",
+        "VAR_CLEARED_8_NO_CACHEABLE",
+        "VAR_CLEARED_16_NO_CACHEABLE",
+        "VAR_CLEARED_32_NO_CACHEABLE",
+        "VAR_CLEARED_UNSPECIFIED_NO_CACHEABLE",
+        "VAR_CLEARED_UNSPECIFIED_AE_NO_CACHEABLE",
+    ],
+    "VAR_INIT": [
+        "VAR_INIT_BOOLEAN",
+        "VAR_INIT_8",
+        "VAR_INIT_16",
+        "VAR_INIT_32",
+        "VAR_INIT_UNSPECIFIED",
+        "VAR_INIT_BOOLEAN_NO_CACHEABLE",
+        "VAR_INIT_8_NO_CACHEABLE",
+        "VAR_INIT_16_NO_CACHEABLE",
+        "VAR_INIT_32_NO_CACHEABLE",
+        "VAR_INIT_UNSPECIFIED_NO_CACHEABLE",
+        "VAR_INIT_UNSPECIFIED_AE_NO_CACHEABLE",
+    ],
+    "VAR_SHARED": [
+        "VAR_SHARED_INIT_UNSPECIFIED_NO_CACHEABLE",
+        "VAR_SHARED_CLEARED_UNSPECIFIED_NO_CACHEABLE",
+    ],
+    "QM": [
+        "CONST_QM_LOCAL_32",
+        "CONST_QM_GLOBAL_32"
+    ]
+}
+
+# 示例用法：
+# 只生成CONFIG_DATA相关的section
+#generate_memmap_macros(fo, "Adc", "Lnx", ["CONFIG_DATA"])
+# 只生成CODE和CONST相关的section
+#generate_memmap_macros(fo, "Can", "Lnx", ["CODE", "CONST"])
+# 生成特定的几个section
+#generate_memmap_macros(fo, "Uart", "Lnx", ["CODE", "VAR_CLEARED_8_NO_CACHEABLE"])
+# 生成所有section
+#generate_memmap_macros(fo, "Spi", "Lnx")
+def generate_memmap_macros(fo, module_name, section_types=None):
+    """
+    生成内存映射宏定义，包括START_SEC和STOP_SEC部分
+    
+    Args:
+        fo: 文件对象，用于写入生成的代码
+        module_name: 模块名称
+        section_types: 需要生成的section类型列表，可以是MEMMAP_SECTIONS中的key，
+                      也可以是具体的section名称列表。如果为None，则生成所有类型
+    """
+    logger.debug('Enter function %s' % generate_memmap_macros.__name__)
+    module_upper = module_name.upper()
+    
+    sections_to_generate = []
+    
+    # 如果没有指定section_types，使用所有section
+    if section_types is None:
+        for section_group in MEMMAP_SECTIONS.values():
+            sections_to_generate.extend(section_group)
+    else:
+        # 处理传入的section_types
+        for section_type in section_types:
+            if section_type in MEMMAP_SECTIONS:
+                # 如果是预定义组的key，添加该组所有section
+                sections_to_generate.extend(MEMMAP_SECTIONS[section_type])
+            else:
+                # 否则认为是具体的section名称
+                sections_to_generate.append(section_type)
+    
+    # 生成指定的宏组合
+    for section in sections_to_generate:
+        # START_SEC宏
+        start_macro = f"""
+#define {module_upper}_START_SEC_{section}
+#include "{module_name}_MemMap.h"
+"""
+        fo.write(start_macro)
+        fo.write(f"// TODO: Implement")
+        
+        # STOP_SEC宏
+        stop_macro = f"""
+#define {module_upper}_STOP_SEC_{section}
+#include "{module_name}_MemMap.h"
+"""
+        fo.write(stop_macro)
+        
+        # 如果是通信模块，添加特殊的缓冲区section
+        if (module_name in ["Spi", "I2c", "Uart"] and 
+            section == "VAR_CLEARED_8_NO_CACHEABLE"):
+            comm_buffer_content = f"static uint8 {module_name}_Buffer[{module_upper}_BUFFER_SIZE];"
+            fo.write(f"\n{comm_buffer_content}\n")
+    
+    logger.debug("Successfully generated MemMap macros for %s" % module_name)
+
 def build_g_ar_error_codes_to_autosar_h(fo):
     # 检查 ArErrorCodes 列表是否不为空
     if g_ar_error_codes_dictlist:
@@ -3326,6 +3468,10 @@ def build_g_apis_to_c(fo,dictlist,safety_enable_flag):
 *******************************************************************************/
 """
     fo.write(f"{start_info}")
+    
+    fo.write(f"#define {g_module_name.upper()}_START_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
+    
     format_str = '\n *\t\t\t\t\t'
     format_str_1 = format_str + '\t'
 
@@ -3453,6 +3599,8 @@ def tree_autogen_module_h(reg_tree):
     fo.write("#define %s%s_H\n"%(g_product_prefix.upper(),g_module_name.upper()))
     fo.write("/******************************************************************************/\n")
     fo.write("#include \"%s%s_bf.h\"\n"%(g_product_prefix,g_module_name))
+    fo.write("#include \"%s%s_reg.h\"\n"%(g_product_prefix,g_module_name))
+    fo.write('#include "Std_Types.h"\n')
     fo.write("/******************************************************************************/\n")
     fo.write("\n")
 
@@ -3511,7 +3659,11 @@ def tree_autogen_module_h(reg_tree):
     fo.write(f"\n")
 
     # 生成moudule.c函数的声明
+    fo.write(f"#define {g_module_name.upper()}_START_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
     build_g_apis_to_h(fo,g_reg_apis_dictlist)
+    fo.write(f"\n#define {g_module_name.upper()}_STOP_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
 
     fo.write(f"\n#endif /*{g_product_prefix.upper()}{g_module_name.upper()}_H */\n")
     fo.close()
@@ -3525,8 +3677,17 @@ def tree_autogen_module_c():
     file_header_str += f"/******************************************************************************/\n\n"
     fo.write(file_header_str)
 
+# 增加header注释
+    header_notes_str = """
+/*******************************************************************************
+**                        GLOBAL CONSTANTS/VARIABLES                          **
+*******************************************************************************/"""
+    fo.write(header_notes_str)
+    generate_memmap_macros(fo, g_module_name, ["CONST", "VAR_CLEARED", "VAR_INIT", "VAR_SHARED"])
+    
     build_g_apis_to_c(fo,g_reg_apis_dictlist,False)
-    fo.write("\n")
+    fo.write(f"\n#define {g_module_name.upper()}_STOP_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
     fo.close()
 
     logger.debug("Successfully generated %s%s.c"%(g_product_prefix,g_module_name))
@@ -3927,6 +4088,12 @@ def tree_autogen_autosar_h():
     fo.write("/******************************************************************************/\n")
     fo.write('#include "Std_Types.h"\n')
     fo.write("#include \"%s%s_bf.h\"\n"%(g_product_prefix,g_module_name))
+    fo.write("#include \"%s%s.h\"\n"%(g_product_prefix,g_module_name))
+
+    filelist = pick_filelist_outof_ar_type_definitions()
+    if filelist != '':
+        for file in filelist:
+            fo.write(f'#include "{file}"\n')
     fo.write(f'#include "{g_module_name}_Cfg.h"\n')
     fo.write("/******************************************************************************/\n")
     fo.write("\n")
@@ -3946,7 +4113,12 @@ def tree_autogen_autosar_h():
     #build_g_ar_error_codes_to_autosar_h(fo)  
     build_sid_macro_to_h(fo,safety_enable_flag)    
     build_g_ar_type_definitions_to_h(file_name,fo,safety_enable_flag)
+    
+    fo.write(f"#define {g_module_name.upper()}_START_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
     build_g_apis_to_h(fo,g_ar_apis_dictlist)
+    fo.write(f"\n#define {g_module_name.upper()}_STOP_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
        
     fo.write(f"\n#endif /*{g_module_name.upper()}_H */\n")
     fo.close()
@@ -4115,12 +4287,32 @@ def tree_autogen_autosar_c():
     if '_RUNTIME_API_MODE' in pre_compile_str:
         fo.write(f"{user_mode_macros_runtime}\n")                    
     
+    # 增加private function header注释
+    private_function_header_str = """
+/*******************************************************************************
+**                        Private Function Declarations                       **
+*******************************************************************************/"""
+    fo.write(private_function_header_str)
+    fo.write(f"\n#define {g_module_name.upper()}_START_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
     build_detcheck_extern_to_autosar_c(fo,safety_enable_flag)
     build_g_apis_local_line_to_c(fo,g_ar_apis_dictlist)
+    fo.write(f"\n#define {g_module_name.upper()}_STOP_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
+    
+    # 增加header注释
+    header_notes_str = """
+/*******************************************************************************
+**                        GLOBAL CONSTANTS/VARIABLES                          **
+*******************************************************************************/"""
+    fo.write(header_notes_str)
+    generate_memmap_macros(fo, g_module_name, ["CONST", "VAR_CLEARED", "VAR_INIT", "VAR_SHARED"])
     
     build_g_apis_to_c(fo,g_ar_apis_dictlist,safety_enable_flag)
-       
+    
     build_detcheck_functions_to_autosar_c(fo,safety_enable_flag)
+    fo.write(f"\n#define {g_module_name.upper()}_STOP_SEC_CODE\n")
+    fo.write(f"#include \"{g_module_name}_MemMap.h\"\n")
     
     fo.close()
     logger.debug("Successfully generated %s.c"%(g_module_name))
