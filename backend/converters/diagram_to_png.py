@@ -41,7 +41,8 @@ class DiagramToPngConverter(BaseConverter):
     
     def __init__(self, output_dir: str, **kwargs):
         super().__init__(output_dir, **kwargs)
-        self.dpi = kwargs.get('dpi', self.DEFAULT_DPI)
+        self.dpi = kwargs.get('svg_dpi', kwargs.get('dpi', self.DEFAULT_DPI))
+        self.svg_output_width = kwargs.get('svg_output_width', 800)
         self._check_dependencies()
         
     def _check_dependencies(self):
@@ -227,7 +228,7 @@ class DiagramToPngConverter(BaseConverter):
                 str(svg_file),
                 "--export-type=png",
                 f"--export-filename={output_file}",
-                f"--export-dpi={dpi}"
+                f"--export-width={self.svg_output_width}"
             ]
             
             result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

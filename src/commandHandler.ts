@@ -93,6 +93,14 @@ export async function handleConvertCommand(
                     popplerPath: config.get<string>('popplerPath', ''),
                     tesseractCmd: config.get<string>('tesseractCmd', '')
                 };
+            } else if (conversionType === 'diagram-to-png') {
+                // SVG/图表转PNG的配置
+                conversionOptions = {
+                    svgDpi: config.get<number>('svgDpi', 300),
+                    svgConversionMethod: config.get<string>('svgConversionMethod', 'auto'),
+                    svgOutputWidth: config.get<number>('svgOutputWidth', 800),
+                    svgFallbackEnabled: config.get<boolean>('svgFallbackEnabled', true)
+                };
             }
             
             const result = await executePythonScript(
