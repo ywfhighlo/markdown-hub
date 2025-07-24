@@ -1,7 +1,7 @@
 {
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
-  "description": "Markdown文档转换的瑞士军刀。",
+  "description": "The Swiss Army Knife for document conversion. Transform Markdown, Office documents, and diagrams with one-click batch processing.",
   "version": "0.3.0",
   "author": "余文锋 <909188787@qq.com>",
   "publisher": "ywfhighlo",
@@ -17,13 +17,7 @@
   ],
   "icon": "media/icon.png",
   "activationEvents": [
-    "onView:explorer",
-    "onCommand:markdown-hub.mdToDocx",
-    "onCommand:markdown-hub.mdToPdf",
-    "onCommand:markdown-hub.mdToHtml",
-    "onCommand:markdown-hub.officeToMd",
-    "onCommand:markdown-hub.diagramToPng",
-    "onCommand:markdown-hub.openTemplateSettings"
+    "onView:explorer"
   ],
   "main": "./out/extension.js",
   "contributes": {
