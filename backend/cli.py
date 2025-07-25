@@ -98,8 +98,10 @@ def main():
                        help='生成代码的语言设置 (默认: english)')
     parser.add_argument('--excel-reg-short-description', 
                        action='store_true',
-                       default=True,
-                       help='是否生成寄存器短描述 (默认: 启用)')
+                       help='生成寄存器短描述')
+    parser.add_argument('--no-excel-reg-short-description', 
+                       action='store_true',
+                       help='禁用寄存器短描述生成')
     parser.add_argument('--excel-mask-style', 
                        choices=['nxp5777m', 'infineon', 'arkuart'],
                        default='nxp5777m',
@@ -161,7 +163,7 @@ def main():
             'excel_output_dir': args.excel_output_dir,
             'debug_level': args.excel_debug_level,
             'language': args.excel_language,
-            'reg_short_description': args.excel_reg_short_description,
+            'reg_short_description': args.excel_reg_short_description if args.excel_reg_short_description else not args.no_excel_reg_short_description,
             'mask_style': args.excel_mask_style,
             'sysinfo_json': args.excel_sysinfo_json
         }

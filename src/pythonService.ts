@@ -132,9 +132,11 @@ export function executePythonScript(
             if (conversionOptions.maskStyle) {
                 args.push('--excel-mask-style', conversionOptions.maskStyle);
             }
-            if (conversionOptions.registerShortDescription !== undefined) {
-                if (conversionOptions.registerShortDescription) {
+            if (conversionOptions.regShortDescription !== undefined) {
+                if (conversionOptions.regShortDescription) {
                     args.push('--excel-reg-short-description');
+                } else {
+                    args.push('--no-excel-reg-short-description');
                 }
             }
             if (conversionOptions.sysinfoJsonPath) {

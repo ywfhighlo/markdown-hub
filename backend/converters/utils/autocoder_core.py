@@ -2122,6 +2122,7 @@ def get_values_from_tree_leaf_list(shortname,tree_leaf_list):
 
 #autogen bit field struct
 def autogen_regdef_h_bits_struct(filehandle,reserved_tree_leaf_list):
+    global g_reg_short_description
     logger.info('Enter function %s' % autogen_regdef_h_bits_struct.__name__)
 
     # short_name作为key遍历词典g_reglist_shortname_key_dict。value为列表
@@ -2419,8 +2420,8 @@ def get_g_sysinfo_dict():
 def get_factory_version_info():
     # 从g_sysinfo_dict中获取版本信息
     # 注意：g_sysinfo_dict的键是Info Name，值是包含Info Value的字典
-    vendor_id = g_sysinfo_dict.get('Vendor ID', {}).get('Info Value', '1')
-    module_id = g_sysinfo_dict.get('Module ID', {}).get('Info Value', '1')
+    vendor_id = g_sysinfo_dict.get('Vendor ID', {}).get('Info Value', '202')
+    module_id = g_sysinfo_dict.get('Module ID', {}).get('Info Value', '102')
     ar_release = g_sysinfo_dict.get('AUTOSAR Release', {}).get('Info Value', '4.4.0')
     sw_version = g_sysinfo_dict.get('Module SW Version', {}).get('Info Value', '1.0.0')
     logger.info(f'get_factory_version_info: {vendor_id}, {ar_release}, {module_id}, {sw_version}')
