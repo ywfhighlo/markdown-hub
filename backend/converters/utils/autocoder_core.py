@@ -2412,19 +2412,96 @@ def get_T_dict_from_excel_sheet(filename, sheetname, indexstr):
         return_dict = excel_data[sheetname].astype(str).set_index(indexstr).T.to_dict()
         return return_dict
         
+# 全局变量存储完整的sysinfo数据
+g_full_sysinfo_data = {}
+
+def get_module_id_from_autosar_list(module_name: str) -> Optional[int]:
+    """
+    从autosar_module_list中根据module_name查找module_id
+    
+    Args:
+        module_name: 模块名称
+        
+    Returns:
+        int: 模块ID，如果是AUTOSAR标准模块返回对应ID，如果是非AUTOSAR标准模块返回255，如果数据不可用返回None
+    """
+    global g_full_sysinfo_data
+    
+    if 'autosar_module_list' not in g_full_sysinfo_data:
+        return None
+        
+    modules = g_full_sysinfo_data['autosar_module_list'].get('modules', [])
+    for module in modules:
+        if module.get('module_name') == module_name:
+            return module.get('module_id')
+    
+    # 如果模块名在表中查不到，说明是非AUTOSAR标准模块，统一返回255
+    return 255
+
 def get_g_sysinfo_dict():
-    global g_sysinfo_dict
-    g_sysinfo_dict = get_T_dict_from_excel_sheet(g_input_excel_file_path, 'Baseinfo', 'Info Name')
-    logger.info(g_sysinfo_dict)
+    global g_sysinfo_dict, g_full_sysinfo_data
+    import json
+    import os
+    
+    # 尝试从JSON文件读取数据
+    # 首先尝试相对于当前文件的路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    json_file_path = os.path.join(current_dir, 'sysinfo.json')
+    
+    # 如果当前目录没有，尝试项目根目录的相对路径
+    if not os.path.exists(json_file_path):
+        json_file_path = 'backend/converters/utils/sysinfo.json'
+    
+    if os.path.exists(json_file_path):
+        try:
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            # 存储完整的JSON数据
+            g_full_sysinfo_data = json_data
+            # 从JSON数据中提取baseinfo（注意JSON中的key是小写）
+            if 'baseinfo' in json_data:
+                g_sysinfo_dict = json_data['baseinfo']
+                safe_log('info', f"Loaded sysinfo from JSON: {g_sysinfo_dict}")
+            else:
+                safe_log('error', "baseinfo not found in JSON file")
+                g_sysinfo_dict = {}
+        except Exception as e:
+            safe_log('error', f"Error reading JSON file: {e}")
+            g_sysinfo_dict = {}
+    else:
+        # 如果JSON文件不存在，尝试从Excel文件读取（向后兼容）
+        excel_file_path = 'Ark_sysinfo.xlsx'
+        if os.path.exists(excel_file_path):
+            safe_log('warning', "JSON file not found, falling back to Excel file")
+            g_sysinfo_dict = get_T_dict_from_excel_sheet('Ark_sysinfo.xlsx', 'Baseinfo', 'Module Name')
+            # 初始化 g_full_sysinfo_data 为空字典，因为 Excel 文件不包含 autosar_module_list
+            g_full_sysinfo_data = {'baseinfo': g_sysinfo_dict}
+            safe_log('info', f"Loaded sysinfo from Excel: {g_sysinfo_dict}")
+        else:
+            safe_log('error', "Neither JSON nor Excel sysinfo file found")
+            g_sysinfo_dict = {}
+            g_full_sysinfo_data = {}
         
 def get_factory_version_info():
     # 从g_sysinfo_dict中获取版本信息
-    # 注意：g_sysinfo_dict的键是Info Name，值是包含Info Value的字典
-    vendor_id = g_sysinfo_dict.get('Vendor ID', {}).get('Info Value', '202')
-    module_id = g_sysinfo_dict.get('Module ID', {}).get('Info Value', '102')
-    ar_release = g_sysinfo_dict.get('AUTOSAR Release', {}).get('Info Value', '4.4.0')
-    sw_version = g_sysinfo_dict.get('Module SW Version', {}).get('Info Value', '1.0.0')
-    logger.info(f'get_factory_version_info: {vendor_id}, {ar_release}, {module_id}, {sw_version}')
+    # 注意：现在g_sysinfo_dict是从JSON加载的，需要根据当前模块名获取信息
+    global g_module_name
+    
+    # 获取当前模块的信息，如果不存在则使用默认值
+    module_info = g_sysinfo_dict.get(g_module_name, {})
+    vendor_id = module_info.get('vendor_id', '202')
+    
+    # 如果baseinfo中没有module_id，从autosar_module_list中查找
+    module_id = module_info.get('module_id')
+    if module_id is None:
+        module_id = get_module_id_from_autosar_list(g_module_name)
+        if module_id is None:
+            module_id = '255'  # 数据不可用时的默认值
+        safe_log('info', f'Module ID for {g_module_name} found from autosar_module_list: {module_id}')
+    
+    ar_release = module_info.get('autosar_release', '4.4.0')
+    sw_version = module_info.get('module_sw_version', '1.0.0')
+    safe_log('info', f'get_factory_version_info: {vendor_id}, {ar_release}, {module_id}, {sw_version}')
     ar_release_split = ar_release.split('.')
     ar_release_major = ar_release_split[0]
     ar_release_minor = ar_release_split[1]
@@ -2469,10 +2546,11 @@ def autogen_cfg_h():
     fo.write(dem_report_en_disable_macro)
 
     # 从g_sysinfo_dict中获取AUTOSAR Release和Module SW Version
-    # 注意：g_sysinfo_dict的键是Info Name，值是包含Info Value的字典
-    ar_release = g_sysinfo_dict.get('AUTOSAR Release', {}).get('Info Value', '4.4.0')
-    sw_version = g_sysinfo_dict.get('Module SW Version', {}).get('Info Value', '1.0.0')
-    logger.info(f'autogen_cfg_h: {ar_release}, {sw_version}')
+    # 注意：现在g_sysinfo_dict是从JSON加载的，需要根据当前模块名获取信息
+    module_info = g_sysinfo_dict.get(g_module_name, {})
+    ar_release = module_info.get('autosar_release', '4.4.0')
+    sw_version = module_info.get('module_sw_version', '1.0.0')
+    safe_log('info', f'autogen_cfg_h: {ar_release}, {sw_version}')
 
     # 生成published_information macro
     published_information_str = pick_published_information_outof_ar_cfg_interfaces()
@@ -4537,10 +4615,16 @@ def init_autocoder(config: AutocoderConfig):
     g_trans_enum_item_description = g_trans_flag
     
     # 加载系统信息
+    global g_full_sysinfo_data
     if config.sysinfo_json and os.path.exists(config.sysinfo_json):
         with open(config.sysinfo_json, 'r', encoding='utf-8') as f:
             sysinfo_data = json.load(f)
+            # 存储完整的JSON数据
+            g_full_sysinfo_data = sysinfo_data
             g_sysinfo_dict = sysinfo_data.get('baseinfo', {})
+    else:
+        # 如果没有指定sysinfo_json，调用get_g_sysinfo_dict()来加载默认的系统信息
+        get_g_sysinfo_dict()
     
     # 确保输出目录存在
     os.makedirs(g_gen_file_path, exist_ok=True)
