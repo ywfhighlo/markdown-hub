@@ -101,9 +101,9 @@ def main():
                        default=True,
                        help='是否生成寄存器短描述 (默认: 启用)')
     parser.add_argument('--excel-mask-style', 
-                       choices=['nxp', 'infineon', 'arkuart'],
-                       default='nxp',
-                       help='寄存器掩码样式 (默认: nxp)')
+                       choices=['nxp5777m', 'infineon', 'arkuart'],
+                       default='nxp5777m',
+                       help='寄存器掩码样式 (默认: nxp5777m)')
     parser.add_argument('--excel-sysinfo-json', 
                        help='系统信息JSON文件路径 (可选)')
     

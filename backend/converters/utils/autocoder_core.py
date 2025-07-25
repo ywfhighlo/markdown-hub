@@ -40,7 +40,7 @@ class AutocoderConfig:
     debug_level: str = 'info'
     language: str = 'english'
     reg_short_description: bool = True
-    mask_style: str = 'nxp'
+    mask_style: str = 'nxp5777m'
     input_file: str = ''
     output_dir: str = './converted_markdown_files/'
     sysinfo_json: str = ''
@@ -4727,7 +4727,7 @@ def run_autocoder() -> List[str]:
 
 def convert_excel_to_code(input_file: str, output_dir: str = './converted_markdown_files/', 
                          debug_level: str = 'info', language: str = 'english',
-                         reg_short_description: bool = True, mask_style: str = 'nxp',
+                         reg_short_description: bool = True, mask_style: str = 'nxp5777m',
                          sysinfo_json: str = '') -> List[str]:
     """
     便利函数：直接从参数运行Excel到代码的转换
@@ -4738,7 +4738,7 @@ def convert_excel_to_code(input_file: str, output_dir: str = './converted_markdo
         debug_level: 调试级别 ('debug', 'info', 'warning', 'error')
         language: 语言 ('english', 'chinese')
         reg_short_description: 是否使用寄存器短描述
-        mask_style: 掩码样式 ('nxp', 'infineon', 'arkuart')
+        mask_style: 掩码样式 ('nxp5777m', 'infineon', 'arkuart')
         sysinfo_json: 系统信息JSON文件路径
     
     Returns:

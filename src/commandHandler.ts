@@ -120,7 +120,7 @@ export async function handleConvertCommand(
                     outputDir: excelOutputDir,
                     debugLevel: excelConfig.get<string>('debugLevel', 'info'),
                     language: excelConfig.get<string>('language', 'english'),
-                    maskStyle: excelConfig.get<string>('maskStyle', 'nxp'),
+                    maskStyle: excelConfig.get<string>('maskStyle', 'nxp5777m'),
                     regShortDescription: excelConfig.get<boolean>('registerShortDescription', true),
                     sysinfoJson: excelConfig.get<string>('sysinfoJsonPath', '')
                 };

@@ -386,9 +386,9 @@
         },
         "markdown-hub.excelToCode.maskStyle": {
           "type": "string",
-          "default": "nxp",
+          "default": "nxp5777m",
           "enum": [
-            "nxp",
+            "nxp5777m",
             "infineon",
             "arkuart"
           ],

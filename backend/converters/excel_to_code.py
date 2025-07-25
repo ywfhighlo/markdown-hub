@@ -52,7 +52,7 @@ class ExcelToCodeConverter(BaseConverter):
             debug_level=config.get('debug_level', 'info'),
             language=config.get('language', 'english'),
             reg_short_description=config.get('reg_short_description', True),
-            mask_style=config.get('mask_style', 'nxp'),
+            mask_style=config.get('mask_style', 'nxp5777m'),
             input_file='',  # 将在convert方法中设置
             output_dir=excel_output_dir,
             sysinfo_json=config.get('sysinfo_json', '')

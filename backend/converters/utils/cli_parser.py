@@ -29,10 +29,10 @@ def create_cli_parser() -> argparse.ArgumentParser:
 Examples:
   %(prog)s input.xlsx -o ./output
   %(prog)s input.xlsx --language chinese --debug-level debug
-  %(prog)s input.xlsx --mask-style nxp --sysinfo-json sysinfo.json
+  %(prog)s input.xlsx --mask-style nxp5777m --sysinfo-json sysinfo.json
 
 Supported mask styles:
-  - nxp (default)
+  - nxp5777m (default)
   - custom
 
 Supported languages:
@@ -76,8 +76,8 @@ Supported debug levels:
     
     parser.add_argument(
         '--mask-style',
-        default='nxp',
-        help='Mask style for register definitions (default: nxp)'
+        default='nxp5777m',
+        help='Mask style for register definitions (default: nxp5777m)'
     )
     
     parser.add_argument(

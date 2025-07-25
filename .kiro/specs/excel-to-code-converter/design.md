@@ -34,7 +34,7 @@ class ExcelToCodeConverter(BaseConverter):
         # CLI parameter mapping
         self.debug_level = kwargs.get('debug_level', 'info')
         self.language = kwargs.get('language', 'english')
-        self.mask_style = kwargs.get('mask_style', 'nxp')
+        self.mask_style = kwargs.get('mask_style', 'nxp5777m')
         self.reg_short_description = kwargs.get('reg_short_description', True)
         
     def convert(self, input_path: str) -> List[str]:
@@ -67,7 +67,7 @@ class AutocoderConfig:
     debug_level: str = 'info'
     language: str = 'english'
     reg_short_description: bool = True
-    mask_style: str = 'nxp'
+    mask_style: str = 'nxp5777m'
     output_dir: str = './converted_markdown_files'
 ```
 
