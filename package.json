@@ -214,8 +214,8 @@
         },
         "markdown-hub.pythonPath": {
           "type": "string",
-          "default": "python",
-          "markdownDescription": "Path to Python executable. On Windows, this should typically be `python`. On macOS/Linux, it's often `python3`.",
+          "default": "",
+          "markdownDescription": "Path to Python executable. Leave empty for automatic detection. The extension will automatically detect `python3` or `python` based on your system. You can also specify a full path like `/opt/homebrew/bin/python3`.",
           "scope": "window"
         },
         "markdown-hub.useDocxTemplate": {

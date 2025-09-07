@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 
 type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-svg-to-docx' | 'office-to-md' | 'diagram-to-png';
 
@@ -26,6 +27,28 @@ interface ResultInfo {
 type PythonOutput = ProgressInfo | ResultInfo;
 
 /**
+ * 智能检测可用的Python命令
+ */
+function detectPythonCommand(): string {
+    const candidates = ['python3', 'python'];
+    
+    for (const candidate of candidates) {
+        try {
+            // 尝试执行 python --version 来检测是否可用
+            execSync(`${candidate} --version`, { stdio: 'ignore' });
+            return candidate;
+        } catch (error) {
+            // 如果命令不存在，继续尝试下一个
+            continue;
+        }
+    }
+    
+    // 如果都不可用，根据操作系统返回默认值
+    const isWindows = process.platform === 'win32';
+    return isWindows ? 'python' : 'python3';
+}
+
+/**
  * 执行 Python 后端脚本进行文件转换
  */
 export function executePythonScript(
@@ -41,11 +64,12 @@ export function executePythonScript(
         // Python 脚本路径
         const scriptPath = path.join(context.extensionPath, 'backend', 'cli.py');
         
-        // 获取 Python 路径配置，并根据操作系统智能选择默认值
+        // 获取 Python 路径配置，智能检测可用的Python命令
         const config = vscode.workspace.getConfiguration('markdown-hub');
-        const isWindows = process.platform === 'win32';
-        const defaultPythonCommand = isWindows ? 'python' : 'python3';
-        const pythonPath = config.get<string>('pythonPath', defaultPythonCommand);
+        const configuredPythonPath = config.get<string>('pythonPath');
+        
+        // 如果用户配置了特定路径，使用用户配置；否则自动检测
+        const pythonPath = configuredPythonPath || detectPythonCommand();
 
         const args = [
             scriptPath,
