@@ -6,14 +6,12 @@ node_modules/
 # Source code and test files that are compiled
 src/
 test/
+.trae/
 
 # Python specific ignores
 .venv/
 backend/**/__pycache__/
 **/__pycache__/
-
-# Old tools directory
-tools/
 
 # Test artifacts
 test_output/

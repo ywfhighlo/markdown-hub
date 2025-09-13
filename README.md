@@ -21,7 +21,7 @@ Markdown文档转换的瑞士军刀。
 - **DOCX → Markdown**: 将 Word 文档转换为 `.md` 文件。
 - **XLSX → Markdown**: 将 Excel 表格转换为 `.md` 文件。
 - **PDF → Markdown**: 将 PDF 文档转换为 `.md` 文件。
-- **SVG/Draw.io → PNG**: 将矢量图或流程图转换为PNG图片。
+- **图表 → PNG**: 将SVG、Mermaid、Draw.io、PlantUML等图表文件转换为高质量PNG图片。
 
 ### 批量转换
 - **Markdown批量转DOCX/PDF/HTML/PPTX**: 批量转换目录中所有 `.md` 文件。

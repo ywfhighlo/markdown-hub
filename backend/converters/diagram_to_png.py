@@ -27,6 +27,7 @@ except ImportError:
     svglib_available = False
 
 from .base_converter import BaseConverter
+from .plantuml_converter import PlantUMLConverter
 
 class DiagramToPngConverter(BaseConverter):
     """
@@ -91,7 +92,7 @@ class DiagramToPngConverter(BaseConverter):
             List[str]: 生成的输出文件路径列表
         """
         # 支持的文件扩展名
-        supported_extensions = ['.svg', '.drawio', '.mmd']
+        supported_extensions = ['.svg', '.drawio', '.mmd', '.puml', '.plantuml', '.pu']
         
         # 验证输入
         if not self._is_valid_input(input_path, supported_extensions):
@@ -150,6 +151,8 @@ class DiagramToPngConverter(BaseConverter):
                 success = self._convert_mermaid_to_png(file_path_obj, output_file)
             elif file_type == 'drawio':
                 success = self._convert_drawio_to_png(file_path_obj, output_file)
+            elif file_type == 'plantuml':
+                success = self._convert_plantuml_to_png(file_path_obj, output_file)
             else:
                 self.logger.warning(f"未知文件类型: {file_type}")
                 return None
@@ -183,6 +186,8 @@ class DiagramToPngConverter(BaseConverter):
             return 'drawio'
         elif suffix in ['.mmd']:
             return 'mermaid'
+        elif suffix in ['.puml', '.plantuml', '.pu']:
+            return 'plantuml'
         else:
             return None
     
@@ -215,6 +220,44 @@ class DiagramToPngConverter(BaseConverter):
         
         self.logger.error(f"所有转换方法都失败了: {svg_file}")
         return False
+    
+    def _convert_plantuml_to_png(self, plantuml_file: Path, output_file: Path) -> bool:
+        """
+        转换PlantUML文件为PNG
+        使用PlantUMLConverter进行转换
+        
+        Args:
+            plantuml_file: PlantUML文件路径
+            output_file: 输出PNG文件路径
+            
+        Returns:
+            bool: 转换是否成功
+        """
+        try:
+            # 创建PlantUML转换器实例
+            converter = PlantUMLConverter(str(output_file.parent), **self.config)
+            
+            # 执行转换
+            result = converter.convert(str(plantuml_file))
+            
+            # 检查转换结果
+            if result and len(result) > 0:
+                # 如果输出文件名不匹配，需要重命名
+                actual_output = Path(result[0])
+                if actual_output != output_file:
+                    if actual_output.exists():
+                        # 重命名文件到期望的输出路径
+                        actual_output.rename(output_file)
+                        self.logger.info(f"PlantUML文件重命名: {actual_output} -> {output_file}")
+                
+                return output_file.exists()
+            else:
+                self.logger.error(f"PlantUML转换失败: {plantuml_file}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"转换PlantUML文件失败: {str(e)}")
+            return False
     
     def _convert_with_inkscape(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
         """使用Inkscape转换SVG"""
