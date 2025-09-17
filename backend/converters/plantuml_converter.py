@@ -147,7 +147,7 @@ class PlantUMLConverter(BaseConverter):
                 self.logger.info(f"PlantUML转换成功: {output_file}")
                 return str(output_file)
             else:
-                self.logger.error(f"PlantUML转换失败: {input_file}")
+                self.logger.error(f"PlantUML转换失败: {input_file}, success={success}, file_exists={output_file.exists()}")
                 return None
                 
         except Exception as e:
@@ -329,20 +329,23 @@ class PlantUMLConverter(BaseConverter):
             self.logger.debug(f"执行PlantUML命令: {' '.join(command)}")
             
             # 执行命令
+            # 当使用shell=True时，需要将命令转换为字符串
+            command_str = ' '.join(command)
             result = subprocess.run(
-                command,
+                command_str,
                 capture_output=True,
                 text=True,
                 timeout=self.plantuml_config.timeout,
-                cwd=os.path.dirname(os.path.abspath(input_file)),
-                shell=True  # 在Windows上需要shell=True
+                shell=True
             )
             
             if result.returncode == 0:
                 return True
             else:
                 error_msg = self._parse_plantuml_error(result.stderr or result.stdout)
-                self.logger.error(f"PlantUML转换失败: {error_msg}")
+                self.logger.error(f"PlantUML转换失败 (返回码: {result.returncode}): {error_msg}")
+                self.logger.debug(f"标准输出: {result.stdout}")
+                self.logger.debug(f"标准错误: {result.stderr}")
                 return False
                 
         except subprocess.TimeoutExpired:
