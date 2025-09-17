@@ -142,20 +142,19 @@ async function executeJavaConverter(
     progressCallback: (message: string, percentage?: number) => void
 ): Promise<{ success: boolean; outputFiles?: string[]; error?: string }> {
     try {
-        // 首先尝试使用项目目录中的JAR文件（开发环境）
+        // 尝试项目目录中的JAR文件（开发环境）
         let jarPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'java-backend', 'target', 'markdown-hub.jar');
         
-        // 如果项目目录中没有JAR文件，则使用扩展目录中的JAR文件（生产环境）
+        // 如果项目目录中没有JAR文件，使用扩展目录中的JAR文件（生产环境）
         if (!fs.existsSync(jarPath)) {
             jarPath = path.join(context.extensionPath, 'java-backend', 'target', 'markdown-hub.jar');
         }
         
-        // 检查JAR文件是否存在
         if (!fs.existsSync(jarPath)) {
-            throw new Error('Java后端JAR文件不存在。请确保已编译Java后端项目或重新安装扩展');
+            throw new Error(`Java后端JAR文件未找到。请确保已正确安装扩展或在开发环境中构建了Java后端。\n查找路径: ${jarPath}`);
         }
 
-        // 映射转换类型
+        // 转换类型映射
         const typeMapping: { [key: string]: string } = {
             'md-to-docx': 'md-to-office',
             'md-to-pdf': 'md-to-office', 
@@ -170,37 +169,79 @@ async function executeJavaConverter(
             throw new Error(`不支持的转换类型: ${conversionType}`);
         }
 
-        // 构建命令
-        const outputPath = path.join(outputDir, path.basename(sourcePath, path.extname(sourcePath)));
-        const command = `java -jar "${jarPath}" ${javaConverterType} "${sourcePath}" "${outputPath}"`;
-        
-        progressCallback('正在执行转换...');
-        
-        const { stdout, stderr } = await execAsync(command);
-        
-        if (stderr && !stderr.includes('WARNING')) {
-            throw new Error(stderr);
-        }
-
-        // 查找输出文件
         const outputFiles: string[] = [];
-        const outputBaseName = path.basename(sourcePath, path.extname(sourcePath));
         
-        // 根据转换类型确定可能的输出文件扩展名
-        const extensions: { [key: string]: string[] } = {
-            'md-to-docx': ['.docx'],
-            'md-to-pdf': ['.pdf'],
-            'md-to-html': ['.html'],
-            'md-to-pptx': ['.pptx'],
-            'office-to-md': ['.md'],
-            'diagram-to-png': ['.png']
-        };
+        // 检查输入是文件还是目录
+        const stats = fs.statSync(sourcePath);
+        
+        if (stats.isDirectory()) {
+            // 处理目录：查找所有支持的图表文件
+            if (conversionType === 'diagram-to-png') {
+                const supportedExtensions = ['.puml', '.plantuml', '.mmd', '.mermaid', '.txt'];
+                const files = fs.readdirSync(sourcePath)
+                    .filter(file => supportedExtensions.some(ext => file.toLowerCase().endsWith(ext)))
+                    .map(file => path.join(sourcePath, file));
+                
+                if (files.length === 0) {
+                    // 目录中没有可转换的文件，返回成功但无输出文件
+                    progressCallback('目录中没有找到可转换的图表文件');
+                    return { success: true, outputFiles: [] };
+                }
+                
+                // 逐个转换文件
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const fileName = path.basename(file, path.extname(file));
+                    const outputPath = path.join(outputDir, `${fileName}.png`);
+                    
+                    progressCallback(`正在转换 ${fileName} (${i + 1}/${files.length})...`, (i / files.length) * 100);
+                    
+                    const command = `java -jar "${jarPath}" ${javaConverterType} "${file}" "${outputPath}"`;
+                    const { stdout, stderr } = await execAsync(command);
+                    
+                    if (stderr && !stderr.includes('WARNING')) {
+                        throw new Error(`转换 ${fileName} 失败: ${stderr}`);
+                    }
+                    
+                    if (fs.existsSync(outputPath)) {
+                        outputFiles.push(outputPath);
+                    }
+                }
+            } else {
+                throw new Error('目录输入仅支持图表转换类型');
+            }
+        } else {
+            // 处理单个文件
+            const outputPath = path.join(outputDir, path.basename(sourcePath, path.extname(sourcePath)));
+            const command = `java -jar "${jarPath}" ${javaConverterType} "${sourcePath}" "${outputPath}"`;
+            
+            progressCallback('正在执行转换...');
+            
+            const { stdout, stderr } = await execAsync(command);
+            
+            if (stderr && !stderr.includes('WARNING')) {
+                throw new Error(stderr);
+            }
 
-        const possibleExtensions = extensions[conversionType] || [];
-        for (const ext of possibleExtensions) {
-            const outputFile = path.join(outputDir, outputBaseName + ext);
-            if (fs.existsSync(outputFile)) {
-                outputFiles.push(outputFile);
+            // 查找输出文件
+            const outputBaseName = path.basename(sourcePath, path.extname(sourcePath));
+            
+            // 根据转换类型确定可能的输出文件扩展名
+            const extensions: { [key: string]: string[] } = {
+                'md-to-docx': ['.docx'],
+                'md-to-pdf': ['.pdf'],
+                'md-to-html': ['.html'],
+                'md-to-pptx': ['.pptx'],
+                'office-to-md': ['.md'],
+                'diagram-to-png': ['.png']
+            };
+
+            const possibleExtensions = extensions[conversionType] || [];
+            for (const ext of possibleExtensions) {
+                const outputFile = path.join(outputDir, outputBaseName + ext);
+                if (fs.existsSync(outputFile)) {
+                    outputFiles.push(outputFile);
+                }
             }
         }
 
