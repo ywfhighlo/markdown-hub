@@ -15,8 +15,7 @@ def check_python_packages() -> List[Tuple[str, bool, str]]:
         'PIL',  # Pillow
         'docx',  # python-docx
         'docxtpl',
-        'svglib', 
-        'reportlab',
+      
         'psutil',
         'lxml',
         'markdown'

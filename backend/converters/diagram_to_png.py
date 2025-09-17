@@ -15,12 +15,8 @@ except ImportError:
 
 
 
-try:
-    from svglib.svglib import renderSVG
-    from reportlab.graphics import renderPM
-    svglib_available = True
-except ImportError:
-    svglib_available = False
+# SVG转换使用Batik，不再依赖svglib/reportlab
+svglib_available = False
 
 from .base_converter import BaseConverter
 from .plantuml_converter import PlantUMLConverter
@@ -54,9 +50,7 @@ class DiagramToPngConverter(BaseConverter):
             missing_deps.append("Pillow (用于图像处理)")
             self.logger.warning("Pillow库未安装，图像处理功能将受限")
             
-        if not svglib_available:
-            missing_deps.append("svglib, reportlab (用于SVG转换)")
-            self.logger.warning("svglib/reportlab库未安装，SVG转换功能将受限")
+        # SVG转换使用Batik，不再需要svglib/reportlab
             
         # 检查外部工具
         tools_status = {}
@@ -196,7 +190,6 @@ class DiagramToPngConverter(BaseConverter):
         支持的转换方法：
         1. batik - 使用Batik转换器 (默认)
         2. rsvg-convert - 命令行工具
-        3. svglib - Python库
         """
         if self.svg_conversion_method == 'batik' and hasattr(self, 'batik_converter'):
             try:
@@ -209,10 +202,9 @@ class DiagramToPngConverter(BaseConverter):
             except Exception as e:
                 self.logger.error(f"Batik 转换异常: {str(e)}")
         
-        # 如果Batik转换失败或未配置，尝试其他方法
+        # 如果Batik转换失败或未配置，尝试rsvg-convert
         methods = [
-            ("rsvg-convert", self._convert_with_rsvg),
-            ("svglib", self._convert_with_svglib)
+            ("rsvg-convert", self._convert_with_rsvg)
         ]
         
         for method_name, method_func in methods:
@@ -285,22 +277,7 @@ class DiagramToPngConverter(BaseConverter):
         except Exception:
             return False
     
-    def _convert_with_svglib(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
-        """使用svglib/reportlab转换SVG"""
-        if not svglib_available:
-            return False
-            
-        try:
-            # 动态导入以避免NameError
-            from svglib.svglib import renderSVG
-            from reportlab.graphics import renderPM
-            
-            drawing = renderSVG.renderSVG(str(svg_file))
-            renderPM.drawToFile(drawing, str(output_file), fmt="PNG", dpi=dpi)
-            return True
-            
-        except Exception:
-            return False
+
     
 
     

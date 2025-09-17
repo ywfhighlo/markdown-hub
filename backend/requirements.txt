@@ -16,9 +16,7 @@ docxcompose; sys_platform == 'win32' or sys_platform == 'darwin' or sys_platform
 # Windows特定依赖
 pywin32; sys_platform == 'win32'
 
-# SVG转换依赖
-svglib
-reportlab
+# SVG转换依赖（使用Batik）
 defusedxml
 tinycss2
 webencodings
