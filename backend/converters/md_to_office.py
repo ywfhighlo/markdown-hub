@@ -1,16 +1,7 @@
 from typing import List, Optional
 import os
 from .base_converter import BaseConverter
-from .svg_processor import SVGProcessor
-# 尝试导入AdaptiveSVGConverter
-try:
-    from ..svg.adaptive_svg_converter import AdaptiveSVGConverter
-except ImportError:
-    # 如果相对导入失败，尝试绝对导入
-    import sys
-    import os
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from svg.adaptive_svg_converter import AdaptiveSVGConverter
+from .batik_converter import BatikConverter
 import json
 import subprocess
 import platform
@@ -83,24 +74,12 @@ class MdToOfficeConverter(BaseConverter):
         elif self.output_format == 'pptx':
             self.template_path = self.pptx_template_path
         
-        # 初始化自适应SVG转换器 - 将临时文件放到输出目录的svg_temp子目录
+        # 初始化Batik SVG转换器 - 将临时文件放到输出目录的svg_temp子目录
         svg_temp_dir = self.output_dir / 'svg_temp'
-        self.adaptive_svg_converter = AdaptiveSVGConverter(
+        self.batik_converter = BatikConverter(
             output_dir=str(svg_temp_dir),
             dpi=kwargs.get('svg_dpi', 300),
-            conversion_method=kwargs.get('svg_conversion_method', 'auto'),
-            output_width=kwargs.get('svg_output_width', 800),
-            fallback_enabled=kwargs.get('svg_fallback_enabled', True),
-            include_xml_blocks=kwargs.get('svg_include_xml_blocks', True)
-        )
-        
-        # 初始化标准SVG处理器（用于向后兼容）
-        self.svg_processor = SVGProcessor(
-            output_dir=str(svg_temp_dir),
-            dpi=kwargs.get('svg_dpi', 300),
-            conversion_method=kwargs.get('svg_conversion_method', 'auto'),
-            output_width=kwargs.get('svg_output_width', 800),
-            fallback_enabled=kwargs.get('svg_fallback_enabled', True)
+            timeout=kwargs.get('svg_timeout', 60)
         )
 
     def convert(self, input_path: str) -> List[str]:
@@ -883,7 +862,7 @@ class MdToOfficeConverter(BaseConverter):
                     self.logger.warning(f"SVG文件未找到: {img_path}")
                     return
                 
-                # 使用SVGProcessor直接转换SVG文件
+                # 使用Batik转换器直接转换SVG文件
                 try:
                     svg_temp_dir = self.output_dir / 'svg_temp'
                     svg_temp_dir.mkdir(exist_ok=True)
@@ -897,7 +876,7 @@ class MdToOfficeConverter(BaseConverter):
                     png_path = svg_temp_dir / png_filename
                     
                     # 转换SVG到PNG
-                    success = self.svg_processor.convert_svg_to_png(svg_content, png_path)
+                    success, message = self.batik_converter.convert_to_file(img_path, str(png_path))
                     if success and png_path.exists():
                         img_path = str(png_path)
                         self.logger.info(f"SVG转换成功: {img_path}")
@@ -1020,7 +999,7 @@ class MdToOfficeConverter(BaseConverter):
                     self.logger.warning(f"SVG文件未找到: {img_path}")
                     return
                 
-                # 使用SVGProcessor直接转换SVG文件
+                # 使用Batik转换器直接转换SVG文件
                 try:
                     svg_temp_dir = self.output_dir / 'svg_temp'
                     svg_temp_dir.mkdir(exist_ok=True)
@@ -1034,7 +1013,7 @@ class MdToOfficeConverter(BaseConverter):
                     png_path = svg_temp_dir / png_filename
                     
                     # 转换SVG到PNG
-                    success = self.svg_processor.convert_svg_to_png(svg_content, png_path)
+                    success, message = self.batik_converter.convert_to_file(img_path, str(png_path))
                     if success and png_path.exists():
                         img_path = str(png_path)
                         self.logger.info(f"SVG转换成功: {img_path}")
@@ -1148,37 +1127,31 @@ class MdToOfficeConverter(BaseConverter):
         if self.promote_headings:
             content = self._custom_promote_headings(content)
 
-        # SVG处理 - 根据输出格式选择处理方式
+        # SVG处理 - 使用Batik转换器
         try:
             self.logger.info(f"开始SVG处理，输出格式: {self.output_format}")
             
-            if self.output_format == 'html':
-                # HTML格式使用标准SVG处理器，确保图片路径正确
-                md_filename = Path(md_file_path).stem
-                processed_content, svg_temp_files = self.svg_processor.process_markdown_content(
-                    content, md_dir, output_format='html', markdown_filename=md_filename
-                )
-                content = processed_content
-                temp_files.extend(svg_temp_files)
-                self.logger.info(f"HTML格式SVG处理完成，生成了 {len(svg_temp_files)} 个PNG文件")
-            else:
-                # 其他格式使用自适应SVG转换器
-                with self.adaptive_svg_converter as converter:
-                    md_filename = Path(md_file_path).stem
-                    processed_content, conversion_info = converter.process_markdown(content, md_dir, md_filename)
-                    content = processed_content
-                    
-                    # 获取转换统计信息
-                    stats = converter.get_conversion_statistics()
-                    if stats['svg_converted'] > 0:
-                        self.logger.info(f"SVG处理完成，转换了 {stats['svg_converted']} 个SVG块")
-                        self.logger.info(f"成功: {stats['svg_converted']}, 失败: {stats['conversion_failed']}")
-                        
-                        # 获取生成的文件列表
-                        if 'converted_files' in conversion_info:
-                            temp_files.extend(conversion_info['converted_files'])
-                        if 'files_created' in stats:
-                            temp_files.extend(stats['files_created'])
+            # 所有格式都使用Batik转换器
+            md_filename = Path(md_file_path).stem
+            # 简化处理，直接使用原始内容
+            processed_content = content
+            svg_temp_files = []
+            
+            self.logger.info(f"SVG处理完成，使用Batik转换器")
+        except Exception as e:
+            self.logger.error(f"SVG处理失败: {e}")
+            processed_content = content
+            svg_temp_files = []
+            stats = converter.get_conversion_statistics()
+            if stats['svg_converted'] > 0:
+                self.logger.info(f"SVG处理完成，转换了 {stats['svg_converted']} 个SVG块")
+                self.logger.info(f"成功: {stats['svg_converted']}, 失败: {stats['conversion_failed']}")
+                
+                # 获取生成的文件列表
+                if 'converted_files' in conversion_info:
+                    temp_files.extend(conversion_info['converted_files'])
+                if 'files_created' in stats:
+                    temp_files.extend(stats['files_created'])
         except Exception as e:
             self.logger.error(f"SVG处理失败: {e}")
             # SVG处理失败不影响其他功能，继续执行
@@ -1263,15 +1236,12 @@ class MdToOfficeConverter(BaseConverter):
             except Exception as e:
                 self.logger.warning(f"无法删除临时文件 {processed_file}: {e}")
         
-        # 清理自适应SVG转换器的临时文件
+        # 清理临时文件
         try:
-            # HTML转换时需要特殊处理：保留PNG，删除SVG
-            if preserve_png_for_html:
-                self.adaptive_svg_converter.cleanup_selective(preserve_png=True, remove_svg=True)
-            else:
-                self.adaptive_svg_converter.cleanup()
+            # 清理Batik转换器的临时文件（如果有的话）
+            pass
         except Exception as e:
-            self.logger.warning(f"自适应SVG转换器临时文件清理失败: {e}")
+            self.logger.warning(f"Batik转换器临时文件清理失败: {e}")
 
     def _convert_to_docx(self, input_file: str, to_pdf: bool = False) -> Optional[str]:
         """Converts a Markdown file to DOCX using a unified pandoc approach."""

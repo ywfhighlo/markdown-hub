@@ -36,16 +36,12 @@ Markdown文档转换的瑞士军刀。
 - Microsoft Word（用于DOCX转换）
 - Pandoc（[下载安装包](https://pandoc.org/installing.html)）
 - Tesseract OCR（用于PDF文字识别）
-- Cairo图形库（用于SVG转换，可选）
-- Inkscape（用于SVG转换，可选）
 
 ### macOS
 ```bash
 # 使用 Homebrew 安装系统依赖
 brew install pandoc
 brew install tesseract
-brew install cairo
-brew install inkscape
 ```
 - Python 3.8 或更高版本
 - LibreOffice（用于DOCX转换）
@@ -55,8 +51,6 @@ brew install inkscape
 - LibreOffice
 - Pandoc
 - Tesseract OCR
-- Cairo图形库
-- Inkscape（用于SVG转换）
 
 ## 🛠️ 安装
 

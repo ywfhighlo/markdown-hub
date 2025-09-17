@@ -17,17 +17,11 @@ docxcompose; sys_platform == 'win32' or sys_platform == 'darwin' or sys_platform
 pywin32; sys_platform == 'win32'
 
 # SVG转换依赖
-cairosvg
 svglib
 reportlab
-cairocffi
-cssselect2
 defusedxml
 tinycss2
 webencodings
-# 跨平台Cairo处理
-pycairo; sys_platform != 'darwin'
-cairocffi; sys_platform == 'darwin'
 
 # PDF处理
 pypdf
@@ -65,4 +59,3 @@ typing-extensions>=4.0.0
 # 1. pandoc - Mac: brew install pandoc, Windows: 下载安装包
 # 2. Office处理: Windows需要Microsoft Word, Mac可用LibreOffice
 # 3. Tesseract OCR: Mac: brew install tesseract
-# 4. Cairo图形库: Mac: brew install cairo

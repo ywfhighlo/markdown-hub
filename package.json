@@ -304,15 +304,11 @@
         },
         "markdown-hub.svgConversionMethod": {
           "type": "string",
-          "default": "auto",
+          "default": "batik",
           "enum": [
-            "auto",
-            "cairosvg",
-            "inkscape",
-            "rsvg-convert",
-            "svglib"
+            "batik"
           ],
-          "markdownDescription": "**SVG Conversion Method**\n\nMethod to use for converting SVG to PNG. 'auto' will try methods in order of preference.",
+          "markdownDescription": "**SVG Conversion Method**\n\nMethod to use for converting SVG to PNG. Uses Batik converter for consistent results.",
           "scope": "window",
           "order": 61
         },

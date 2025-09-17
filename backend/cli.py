@@ -73,9 +73,9 @@ def main():
     parser.add_argument('--svg-dpi', type=int, default=300,
                        help='SVG转PNG的DPI设置 (默认: 300)')
     parser.add_argument('--svg-conversion-method', 
-                       choices=['auto', 'cairosvg', 'inkscape', 'rsvg-convert', 'svglib'],
-                       default='auto',
-                       help='SVG转换方法 (默认: auto)')
+                       choices=['batik'],
+                       default='batik',
+                       help='SVG转换方法 (默认: batik)')
     parser.add_argument('--svg-output-width', type=int, default=800,
                        help='SVG转PNG的输出宽度 (默认: 800px)')
     parser.add_argument('--svg-fallback-enabled', action='store_true', default=True,

@@ -13,11 +13,7 @@ try:
 except ImportError:
     pil_available = False
 
-try:
-    import cairosvg
-    cairosvg_available = True
-except ImportError:
-    cairosvg_available = False
+
 
 try:
     from svglib.svglib import renderSVG
@@ -28,6 +24,7 @@ except ImportError:
 
 from .base_converter import BaseConverter
 from .plantuml_converter import PlantUMLConverter
+from .batik_converter import BatikConverter
 
 class DiagramToPngConverter(BaseConverter):
     """
@@ -43,7 +40,12 @@ class DiagramToPngConverter(BaseConverter):
     def __init__(self, output_dir: str, **kwargs):
         super().__init__(output_dir, **kwargs)
         self.dpi = kwargs.get('dpi', self.DEFAULT_DPI)
+        self.svg_conversion_method = kwargs.get('svg_conversion_method', 'batik')
         self._check_dependencies()
+        
+        # 初始化Batik转换器
+        if self.svg_conversion_method == 'batik':
+            self.batik_converter = BatikConverter(output_dir, **kwargs)
         
     def _check_dependencies(self):
         """检查依赖库和外部工具是否已安装"""
@@ -53,17 +55,13 @@ class DiagramToPngConverter(BaseConverter):
             missing_deps.append("Pillow (用于图像处理)")
             self.logger.warning("Pillow库未安装，图像处理功能将受限")
             
-        if not cairosvg_available:
-            missing_deps.append("cairosvg (用于SVG转换)")
-            self.logger.warning("cairosvg库未安装，SVG转换功能将受限")
-            
         if not svglib_available:
             missing_deps.append("svglib, reportlab (用于SVG转换)")
             self.logger.warning("svglib/reportlab库未安装，SVG转换功能将受限")
             
         # 检查外部工具
         tools_status = {}
-        external_tools = ['inkscape', 'rsvg-convert', 'mmdc']
+        external_tools = ['rsvg-convert', 'mmdc']
         
         for tool in external_tools:
             if self._check_tool_availability(tool):
@@ -194,19 +192,28 @@ class DiagramToPngConverter(BaseConverter):
     def _convert_svg_to_png(self, svg_file: Path, output_file: Path) -> bool:
         """
         SVG转PNG转换
-        迁移自 tools/convert_figures.py 的 convert_svg_to_png 函数
+        根据配置使用不同的转换方法
         
-        优先使用的转换方法顺序：
-        1. Inkscape (命令行工具)
-        2. rsvg-convert (命令行工具) 
-        3. svglib/reportlab (Python库)
-        4. cairosvg (Python库)
+        支持的转换方法：
+        1. batik - 使用Batik转换器 (默认)
+        2. rsvg-convert - 命令行工具
+        3. svglib - Python库
         """
+        if self.svg_conversion_method == 'batik' and hasattr(self, 'batik_converter'):
+            try:
+                success, message = self.batik_converter.convert_to_file(str(svg_file), str(output_file))
+                if success:
+                    self.logger.info(f"使用 Batik 成功转换 {svg_file.name}")
+                    return True
+                else:
+                    self.logger.error(f"Batik 转换失败: {message}")
+            except Exception as e:
+                self.logger.error(f"Batik 转换异常: {str(e)}")
+        
+        # 如果Batik转换失败或未配置，尝试其他方法
         methods = [
-            ("Inkscape", self._convert_with_inkscape),
             ("rsvg-convert", self._convert_with_rsvg),
-            ("svglib", self._convert_with_svglib),
-            ("cairosvg", self._convert_with_cairosvg)
+            ("svglib", self._convert_with_svglib)
         ]
         
         for method_name, method_func in methods:
@@ -259,26 +266,6 @@ class DiagramToPngConverter(BaseConverter):
             self.logger.error(f"转换PlantUML文件失败: {str(e)}")
             return False
     
-    def _convert_with_inkscape(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
-        """使用Inkscape转换SVG"""
-        if not self.tools_status.get('inkscape', False):
-            return False
-            
-        try:
-            cmd = [
-                "inkscape",
-                str(svg_file),
-                "--export-type=png",
-                f"--export-filename={output_file}",
-                f"--export-dpi={dpi}"
-            ]
-            
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return result.returncode == 0
-            
-        except Exception:
-            return False
-    
     def _convert_with_rsvg(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
         """使用rsvg-convert转换SVG"""
         if not self.tools_status.get('rsvg-convert', False):
@@ -316,27 +303,7 @@ class DiagramToPngConverter(BaseConverter):
         except Exception:
             return False
     
-    def _convert_with_cairosvg(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
-        """使用cairosvg转换SVG"""
-        if not cairosvg_available:
-            return False
-            
-        try:
-            # 动态导入以避免NameError
-            import cairosvg
-            
-            with open(svg_file, 'rb') as f:
-                svg_data = f.read()
-            
-            cairosvg.svg2png(
-                bytestring=svg_data,
-                write_to=str(output_file),
-                dpi=dpi
-            )
-            return True
-            
-        except Exception:
-            return False
+
     
     def _convert_mermaid_to_png(self, mermaid_file: Path, output_file: Path) -> bool:
         """
