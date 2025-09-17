@@ -123,21 +123,8 @@ export function executePythonScript(
             if (conversionOptions.svgDpi !== undefined) {
                 args.push('--svg-dpi', conversionOptions.svgDpi.toString());
             }
-            if (conversionOptions.svgConversionMethod) {
-                args.push('--svg-conversion-method', conversionOptions.svgConversionMethod);
-            }
             if (conversionOptions.svgOutputWidth !== undefined) {
                 args.push('--svg-output-width', conversionOptions.svgOutputWidth.toString());
-            }
-            if (conversionOptions.svgFallbackEnabled !== undefined) {
-                if (conversionOptions.svgFallbackEnabled) {
-                    args.push('--svg-fallback-enabled');
-                }
-            }
-            
-            // 添加PPTX SVG模式参数
-            if (conversionOptions.pptxSvgMode) {
-                args.push('--pptx-svg-mode', conversionOptions.pptxSvgMode);
             }
         }
         

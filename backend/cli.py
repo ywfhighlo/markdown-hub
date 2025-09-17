@@ -72,18 +72,8 @@ def main():
     # SVG转换相关参数
     parser.add_argument('--svg-dpi', type=int, default=300,
                        help='SVG转PNG的DPI设置 (默认: 300)')
-    parser.add_argument('--svg-conversion-method', 
-                       choices=['batik'],
-                       default='batik',
-                       help='SVG转换方法 (默认: batik)')
     parser.add_argument('--svg-output-width', type=int, default=800,
                        help='SVG转PNG的输出宽度 (默认: 800px)')
-    parser.add_argument('--svg-fallback-enabled', action='store_true', default=True,
-                       help='启用SVG转换失败时的降级处理 (默认: 启用)')
-    parser.add_argument('--pptx-svg-mode', 
-                       choices=['full', 'title_and_svg'],
-                       default='full',
-                       help='PPTX转换模式: full=完整转换, title_and_svg=标题和SVG模式 (默认: full)')
     
     args = parser.parse_args()
     
@@ -130,11 +120,7 @@ def main():
             'tesseract_cmd': args.tesseract_cmd,
             # SVG转换参数
             'svg_dpi': args.svg_dpi,
-            'svg_conversion_method': args.svg_conversion_method,
-            'svg_output_width': args.svg_output_width,
-            'svg_fallback_enabled': args.svg_fallback_enabled,
-            # PPTX SVG模式参数
-            'pptx_svg_mode': args.pptx_svg_mode
+            'svg_output_width': args.svg_output_width
         }
         
         # 从 conversion_type 中提取并传递 output_format

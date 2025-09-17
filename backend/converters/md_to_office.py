@@ -60,12 +60,8 @@ class MdToOfficeConverter(BaseConverter):
         self.email = kwargs.get('email', '')
         self.promote_headings = kwargs.get('promote_headings', False)
         
-        # PPTX SVG 转换模式配置
-        self.pptx_svg_mode = kwargs.get('pptx_svg_mode', 'full')
-        # 验证配置值
-        if self.pptx_svg_mode not in ['full', 'title_and_svg']:
-            self.logger.warning(f"Invalid pptx_svg_mode '{self.pptx_svg_mode}', defaulting to 'full'")
-            self.pptx_svg_mode = 'full'
+        # PPTX SVG 转换模式配置 - 使用默认值
+        self.pptx_svg_mode = 'full'
         
         # 模板路径现在由前端直接提供，后端不再进行复杂的查找
         self.template_path = None

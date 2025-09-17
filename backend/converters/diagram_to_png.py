@@ -40,12 +40,11 @@ class DiagramToPngConverter(BaseConverter):
     def __init__(self, output_dir: str, **kwargs):
         super().__init__(output_dir, **kwargs)
         self.dpi = kwargs.get('dpi', self.DEFAULT_DPI)
-        self.svg_conversion_method = kwargs.get('svg_conversion_method', 'batik')
+        self.svg_conversion_method = 'batik'  # 使用默认值
         self._check_dependencies()
         
         # 初始化Batik转换器
-        if self.svg_conversion_method == 'batik':
-            self.batik_converter = BatikConverter(output_dir, **kwargs)
+        self.batik_converter = BatikConverter(output_dir, **kwargs)
         
     def _check_dependencies(self):
         """检查依赖库和外部工具是否已安装"""

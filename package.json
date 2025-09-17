@@ -2,7 +2,7 @@
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
   "description": "Markdown文档转换的瑞士军刀。",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "余文锋 <909188787@qq.com>",
   "publisher": "ywfhighlo",
   "repository": {
@@ -87,6 +87,10 @@
       {
         "command": "markdown-hub.batchAllToMd",
         "title": "All Files批量转Markdown"
+      },
+      {
+        "command": "markdown-hub.batchDiagramToPng",
+        "title": "图表批量转PNG"
       }
     ],
     "menus": {
@@ -175,6 +179,11 @@
           "when": "explorerResourceIsFolder",
           "command": "markdown-hub.batchMdToPptx",
           "group": "4_md_batch@3"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchDiagramToPng",
+          "group": "4_md_batch@4"
         },
         {
           "when": "explorerResourceIsFolder",
@@ -302,40 +311,12 @@
           "scope": "window",
           "order": 60
         },
-        "markdown-hub.svgConversionMethod": {
-          "type": "string",
-          "default": "batik",
-          "enum": [
-            "batik"
-          ],
-          "markdownDescription": "**SVG Conversion Method**\n\nMethod to use for converting SVG to PNG. Uses Batik converter for consistent results.",
-          "scope": "window",
-          "order": 61
-        },
         "markdown-hub.svgOutputWidth": {
           "type": "number",
           "default": 800,
           "markdownDescription": "**SVG Output Width**\n\nMaximum width in pixels for converted SVG images. Height will be scaled proportionally.",
           "scope": "window",
           "order": 62
-        },
-        "markdown-hub.svgFallbackEnabled": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "**Enable SVG Fallback**\n\nWhen enabled, if SVG conversion fails, the original SVG code will be preserved in the document.",
-          "scope": "window",
-          "order": 63
-        },
-        "markdown-hub.pptxSvgMode": {
-          "type": "string",
-          "default": "title_and_svg",
-          "enum": [
-            "full",
-            "title_and_svg"
-          ],
-          "markdownDescription": "PPTX转换模式：\n- `full`: 完整模式，标题占一页，内容根据情况分页显示，SVG单独占一页\n- `title_and_svg`: 仅标题和SVG模式，只为标题和SVG图像创建幻灯片",
-          "scope": "window",
-          "order": 64
         }
       }
     }

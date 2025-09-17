@@ -74,7 +74,10 @@ export function activate(context: vscode.ExtensionContext) {
             (uri: vscode.Uri) => handleBatchConvert(uri, 'excel', context)),
         
         vscode.commands.registerCommand('markdown-hub.batchAllToMd', 
-            (uri: vscode.Uri) => handleBatchConvert(uri, 'all', context))
+            (uri: vscode.Uri) => handleBatchConvert(uri, 'all', context)),
+        
+        vscode.commands.registerCommand('markdown-hub.batchDiagramToPng', 
+            (uri: vscode.Uri) => handleConvertCommand(uri, 'diagram-to-png', context))
     ];
     
     context.subscriptions.push(...disposables);
