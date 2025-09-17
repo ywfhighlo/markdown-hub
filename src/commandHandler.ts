@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { executePythonScript } from './pythonService';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png';
 
@@ -86,7 +89,7 @@ export async function handleConvertCommand(
                 };
             }
             
-            const result = await executePythonScript(
+            const result = await executeJavaConverter(
                 sourcePath, 
                 conversionType, 
                 outputDir, 
@@ -125,6 +128,92 @@ export async function handleConvertCommand(
             vscode.window.showErrorMessage(`转换失败：${errorMessage}`);
         }
     });
+}
+
+/**
+ * 执行Java转换器
+ */
+async function executeJavaConverter(
+    sourcePath: string,
+    conversionType: ConversionType,
+    outputDir: string,
+    context: vscode.ExtensionContext,
+    options: any,
+    progressCallback: (message: string, percentage?: number) => void
+): Promise<{ success: boolean; outputFiles?: string[]; error?: string }> {
+    try {
+        // 首先尝试使用项目目录中的JAR文件（开发环境）
+        let jarPath = path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', 'java-backend', 'target', 'markdown-hub.jar');
+        
+        // 如果项目目录中没有JAR文件，则使用扩展目录中的JAR文件（生产环境）
+        if (!fs.existsSync(jarPath)) {
+            jarPath = path.join(context.extensionPath, 'java-backend', 'target', 'markdown-hub.jar');
+        }
+        
+        // 检查JAR文件是否存在
+        if (!fs.existsSync(jarPath)) {
+            throw new Error('Java后端JAR文件不存在。请确保已编译Java后端项目或重新安装扩展');
+        }
+
+        // 映射转换类型
+        const typeMapping: { [key: string]: string } = {
+            'md-to-docx': 'md-to-office',
+            'md-to-pdf': 'md-to-office', 
+            'md-to-html': 'md-to-office',
+            'md-to-pptx': 'md-to-office',
+            'office-to-md': 'office-to-md',
+            'diagram-to-png': 'diagram-to-png'
+        };
+
+        const javaConverterType = typeMapping[conversionType];
+        if (!javaConverterType) {
+            throw new Error(`不支持的转换类型: ${conversionType}`);
+        }
+
+        // 构建命令
+        const outputPath = path.join(outputDir, path.basename(sourcePath, path.extname(sourcePath)));
+        const command = `java -jar "${jarPath}" ${javaConverterType} "${sourcePath}" "${outputPath}"`;
+        
+        progressCallback('正在执行转换...');
+        
+        const { stdout, stderr } = await execAsync(command);
+        
+        if (stderr && !stderr.includes('WARNING')) {
+            throw new Error(stderr);
+        }
+
+        // 查找输出文件
+        const outputFiles: string[] = [];
+        const outputBaseName = path.basename(sourcePath, path.extname(sourcePath));
+        
+        // 根据转换类型确定可能的输出文件扩展名
+        const extensions: { [key: string]: string[] } = {
+            'md-to-docx': ['.docx'],
+            'md-to-pdf': ['.pdf'],
+            'md-to-html': ['.html'],
+            'md-to-pptx': ['.pptx'],
+            'office-to-md': ['.md'],
+            'diagram-to-png': ['.png']
+        };
+
+        const possibleExtensions = extensions[conversionType] || [];
+        for (const ext of possibleExtensions) {
+            const outputFile = path.join(outputDir, outputBaseName + ext);
+            if (fs.existsSync(outputFile)) {
+                outputFiles.push(outputFile);
+            }
+        }
+
+        return {
+            success: true,
+            outputFiles
+        };
+    } catch (error: any) {
+        return {
+            success: false,
+            error: error.message || error.toString()
+        };
+    }
 }
 
 /**

@@ -8,16 +8,25 @@ src/
 test/
 .trae/
 
-# Python specific ignores
-.venv/
-backend/**/__pycache__/
-**/__pycache__/
+# Java backend - exclude source code but keep JAR
+java-backend/src/
+java-backend/target/classes/
+java-backend/target/generated-sources/
+java-backend/target/generated-test-sources/
+java-backend/target/maven-archiver/
+java-backend/target/maven-status/
+java-backend/target/test-classes/
+java-backend/target/*-shaded.jar
+java-backend/pom.xml
+java-backend/dependency-reduced-pom.xml
+java-backend/README.md
 
 # Test artifacts
 test_output/
 *.md
 test.html
 test.svg
+converted_markdown_files/
 
 # Exclude build artifacts
 *.vsix

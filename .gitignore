@@ -8,16 +8,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-env/
-*.egg-info/
-dist/
-bundled/
-converted_markdown_files/
+# Java
+java-backend/target/
+java-backend/dependency-reduced-pom.xml
+*.class
+*.jar
+!tools/*.jar
+!java-backend/target/markdown-hub.jar
+!java-backend/target/markdown-hub-*.jar
 
 # VSCode
 .vscode/*
@@ -27,4 +25,4 @@ converted_markdown_files/
 !.vscode/extensions.json
 
 # OS
-.DS_Store 
+.DS_Store

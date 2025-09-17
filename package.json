@@ -221,12 +221,7 @@
           "description": "Directory where converted files will be saved",
           "scope": "window"
         },
-        "markdown-hub.pythonPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to Python executable. Leave empty for automatic detection. The extension will automatically detect `python3` or `python` based on your system. You can also specify a full path like `/opt/homebrew/bin/python3`.",
-          "scope": "window"
-        },
+
         "markdown-hub.useDocxTemplate": {
           "type": "boolean",
           "default": true,
@@ -322,11 +317,11 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run compile && npm run build-java",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "build-java": "cd java-backend && mvn clean package -q",
     "package": "vsce package",
-    "install-deps": "npm install && pip3 install -r backend/requirements.txt",
     "lint": "eslint src --ext ts",
     "test": "npm run compile && node ./out/test/runTest.js"
   },

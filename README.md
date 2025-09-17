@@ -31,35 +31,19 @@ Markdown文档转换的瑞士军刀。
 
 在使用本扩展前，请确保您的系统已安装以下依赖：
 
-### Windows
-- Python 3.8 或更高版本
-- Microsoft Word（用于DOCX转换）
-- Pandoc（[下载安装包](https://pandoc.org/installing.html)）
-- Tesseract OCR（用于PDF文字识别）
+### 所有平台
+- Java 11 或更高版本
+- LibreOffice（用于Office文档转换）
 
-### macOS
-```bash
-# 使用 Homebrew 安装系统依赖
-brew install pandoc
-brew install tesseract
-```
-- Python 3.8 或更高版本
-- LibreOffice（用于DOCX转换）
-
-### Linux
-- Python 3.8 或更高版本
-- LibreOffice
-- Pandoc
-- Tesseract OCR
+### 可选依赖
+- PlantUML（用于UML图表转换）
+- Graphviz（用于图表渲染）
 
 ## 🛠️ 安装
 
 1. 在 VS Code 中安装本扩展
-2. 安装 Python 依赖：
-```bash
-cd backend
-pip install -r requirements.txt
-```
+2. 确保系统已安装 Java 11 或更高版本
+3. 扩展会自动使用内置的 Java 后端进行转换
 
 ## 🚀 使用方法
 
@@ -77,7 +61,6 @@ pip install -r requirements.txt
 您可以在 VS Code 的 `设置(Settings)` 中搜索 `markdown-hub` 来找到所有配置项。
 
 - **`markdown-hub.outputDirectory`**: 所有转换后文件的输出目录。
-- **`markdown-hub.pythonPath`**: Python 解释器的路径或命令。
 - **`markdown-hub.useTemplate`**: 是否为 `Markdown → DOCX` 的转换启用模板功能。
 - **`markdown-hub.templatePath`**: 自定义 `.docx` 模板文件的完整路径。
 - **`markdown-hub.projectName`**: 模板中使用的项目名称。
