@@ -1166,6 +1166,9 @@ class MdToOfficeConverter(BaseConverter):
                     return f"```mermaid\n{code}\n```"
             content = re.sub(r'```mermaid\n(.*?)\n```', replace_mermaid, content, flags=re.DOTALL)
 
+        # 表格列宽优化处理
+        content = self._optimize_table_column_widths(content)
+
         return content, temp_files
     
     def _custom_promote_headings(self, content: str) -> str:
@@ -1749,5 +1752,153 @@ class MdToOfficeConverter(BaseConverter):
             border-radius: 3px;
         }
         """
+    
+    def _optimize_table_column_widths(self, content: str) -> str:
+        """
+        优化表格列宽分配，特别处理第一列：
+        - 如果第一列所有内容显示宽度都小于20（相当于10个汉字），按最宽行设置第一列宽度
+        - 否则按平均分配处理
+        - 保持原有的 pipe table 格式，不转换为 multiline table
+        - 绝对不改变表格内容，只调整格式
+        """
+        try:
+            # 匹配pipe table格式的表格
+            table_pattern = re.compile(
+                r'(\|[^\n]+\|\n\|[-:\s|]+\|\n(?:\|[^\n]+\|\n?)*)',
+                re.MULTILINE
+            )
+            
+            def get_display_width(text):
+                """计算文本的显示宽度（中文字符宽度为2，英文字符宽度为1）"""
+                width = 0
+                for char in text:
+                    if '\u4e00' <= char <= '\u9fff':  # 中文字符
+                        width += 2
+                    elif '\u3000' <= char <= '\u303f':  # 中文标点
+                        width += 2
+                    elif '\uff00' <= char <= '\uffef':  # 全角字符
+                        width += 2
+                    else:  # 英文、数字、半角符号等
+                        width += 1
+                return width
+            
+            def optimize_table(match):
+                table_text = match.group(1).strip()
+                lines = table_text.split('\n')
+                
+                if len(lines) < 3:  # 至少需要标题行、分隔行、数据行
+                    return table_text
+                
+                # 解析表格数据
+                header_line = lines[0]
+                separator_line = lines[1]
+                data_lines = lines[2:]
+                
+                # 提取列数据
+                header_cells = [cell.strip() for cell in header_line.split('|')[1:-1]]
+                data_rows = []
+                for line in data_lines:
+                    if line.strip():
+                        cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                        if len(cells) == len(header_cells):
+                            data_rows.append(cells)
+                
+                if not header_cells or not data_rows:
+                    return table_text
+                
+                # 检查第一列是否所有内容的显示宽度都小于20（相当于10个汉字）
+                first_column_short = True
+                first_column_max_width = get_display_width(header_cells[0])
+                
+                # 检查标题行第一列
+                if get_display_width(header_cells[0]) >= 20:
+                    first_column_short = False
+                
+                # 检查数据行第一列
+                for row in data_rows:
+                    if len(row) > 0:
+                        cell_content = row[0]
+                        cell_width = get_display_width(cell_content)
+                        first_column_max_width = max(first_column_max_width, cell_width)
+                        if cell_width >= 20:
+                            first_column_short = False
+                
+                # 计算每列的实际显示宽度
+                column_widths = []
+                for i in range(len(header_cells)):
+                    max_width = get_display_width(header_cells[i])
+                    for row in data_rows:
+                        if i < len(row):
+                            max_width = max(max_width, get_display_width(row[i]))
+                    column_widths.append(max_width)
+                
+                # 智能列宽分配逻辑
+                if first_column_short and len(header_cells) > 1:
+                    # 第一列内容较短时的特殊处理
+                    target_widths = []
+                    
+                    # 第一列：确保至少8个字符宽度，避免显示问题
+                    first_col_width = max(first_column_max_width, 8)
+                    target_widths.append(first_col_width)
+                    
+                    # 其他列：限制最大宽度，避免表格过宽
+                    for i in range(1, len(header_cells)):
+                        # 限制单列最大宽度为60字符，避免表格过宽
+                        col_width = min(column_widths[i], 60)
+                        # 确保最小宽度为8字符
+                        col_width = max(col_width, 8)
+                        target_widths.append(col_width)
+                    
+                else:
+                    # 第一列内容较长时，所有列都限制最大宽度
+                    target_widths = []
+                    for width in column_widths:
+                        # 限制最大宽度为50字符，确保最小宽度为8字符
+                        col_width = min(max(width, 8), 50)
+                        target_widths.append(col_width)
+                
+                # 重新构建 pipe table，保持原格式
+                result_lines = []
+                
+                # 标题行
+                header_parts = ['|']
+                for i, (cell, target_width) in enumerate(zip(header_cells, target_widths)):
+                    # 计算需要的空格数来达到目标宽度
+                    cell_width = get_display_width(cell)
+                    padding = max(1, target_width - cell_width + 2)  # 至少1个空格
+                    header_parts.append(f' {cell}' + ' ' * (padding - 1) + '|')
+                result_lines.append(''.join(header_parts))
+                
+                # 分隔行
+                separator_parts = ['|']
+                for target_width in target_widths:
+                    separator_parts.append('-' * (target_width + 2) + '|')
+                result_lines.append(''.join(separator_parts))
+                
+                # 数据行
+                for row in data_rows:
+                    row_parts = ['|']
+                    for i, target_width in enumerate(target_widths):
+                        cell = row[i] if i < len(row) else ''
+                        cell_width = get_display_width(cell)
+                        padding = max(1, target_width - cell_width + 2)  # 至少1个空格
+                        row_parts.append(f' {cell}' + ' ' * (padding - 1) + '|')
+                    result_lines.append(''.join(row_parts))
+                
+                return '\n'.join(result_lines)
+            
+            # 替换所有表格
+            optimized_content = table_pattern.sub(optimize_table, content)
+            
+            # 记录优化的表格数量
+            table_count = len(table_pattern.findall(content))
+            if table_count > 0:
+                self.logger.info(f"优化了 {table_count} 个表格的列宽分配")
+            
+            return optimized_content
+            
+        except Exception as e:
+            self.logger.warning(f"表格列宽优化失败: {e}")
+            return content
     
  
