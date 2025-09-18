@@ -1232,6 +1232,16 @@ class MdToOfficeConverter(BaseConverter):
             except Exception as e:
                 self.logger.warning(f"无法删除临时文件 {processed_file}: {e}")
         
+        # 清理svg_temp目录（如果存在且不是HTML转换）
+        if not preserve_png_for_html:
+            try:
+                svg_temp_dir = self.output_dir / 'svg_temp'
+                if svg_temp_dir.exists() and svg_temp_dir.is_dir():
+                    shutil.rmtree(svg_temp_dir)
+                    self.logger.info(f"已删除svg_temp目录: {svg_temp_dir}")
+            except Exception as e:
+                self.logger.warning(f"无法删除svg_temp目录: {e}")
+        
         # 清理临时文件
         try:
             # 清理Batik转换器的临时文件（如果有的话）
