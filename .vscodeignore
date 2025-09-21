@@ -15,7 +15,6 @@ backend/**/__pycache__/
 
 # Test artifacts
 test_output/
-*.md
 test.html
 test.svg
 
@@ -27,5 +26,8 @@ test.svg
 .gitignore
 package-lock.json
 tsconfig.json
-README.md
-DESIGN.md
+
+# Include important documentation files
+!README.md
+!CHANGELOG.md
+!LICENSE

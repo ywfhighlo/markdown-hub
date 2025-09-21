@@ -1,6 +1,6 @@
 # Markdown Hub - VSCode 扩展
 
-Markdown文档转换的瑞士军刀。
+Markdown文档转换的瑞士军刀。- 支持Markdown与DOCX/PDF/HTML/PPTX互转，图表转PNG，批量转换等功能
 
 ## 👨‍💻 作者信息
 
