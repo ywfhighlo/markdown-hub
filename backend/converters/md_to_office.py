@@ -64,12 +64,12 @@ class MdToOfficeConverter(BaseConverter):
         # PPTX SVG 转换模式配置 - 使用默认值
         self.pptx_svg_mode = 'full'
         
-        # 模板路径现在由前端直接提供，后端不再进行复杂的查找
+        # 模板路径处理：优先使用前端提供的路径，如果无效则回退到默认模板
         self.template_path = None
         if self.output_format in ['docx', 'pdf']:
-            self.template_path = self.docx_template_path
+            self.template_path = self._resolve_template_path(self.docx_template_path, 'template.docx')
         elif self.output_format == 'pptx':
-            self.template_path = self.pptx_template_path
+            self.template_path = self._resolve_template_path(self.pptx_template_path, 'template.pptx')
         
         # 初始化Batik SVG转换器 - 将临时文件放到输出目录的svg_temp子目录
         svg_temp_dir = self.output_dir / 'svg_temp'
@@ -78,6 +78,44 @@ class MdToOfficeConverter(BaseConverter):
             dpi=kwargs.get('svg_dpi', 300),
             timeout=kwargs.get('svg_timeout', 60)
         )
+
+    def _resolve_template_path(self, provided_path: str, default_filename: str) -> str:
+        """
+        解析模板路径：如果提供的路径有效则使用，否则尝试使用内置默认模板
+        
+        Args:
+            provided_path: 前端提供的模板路径
+            default_filename: 默认模板文件名 (template.docx 或 template.pptx)
+            
+        Returns:
+            有效的模板路径，如果都无效则返回None
+        """
+        # 1. 如果提供了路径且文件存在，直接使用
+        if provided_path and Path(provided_path).exists():
+            self.logger.info(f"使用用户指定的模板: {provided_path}")
+            return provided_path
+        
+        # 2. 尝试使用内置默认模板
+        try:
+            # 获取当前脚本所在目录
+            current_dir = Path(__file__).parent
+            default_template_path = current_dir / 'templates' / default_filename
+            
+            if default_template_path.exists():
+                self.logger.info(f"使用内置默认模板: {default_template_path}")
+                return str(default_template_path)
+            else:
+                self.logger.warning(f"内置默认模板不存在: {default_template_path}")
+        except Exception as e:
+            self.logger.warning(f"查找默认模板时出错: {e}")
+        
+        # 3. 如果提供了路径但文件不存在，记录警告
+        if provided_path:
+            self.logger.warning(f"用户指定的模板文件不存在: {provided_path}")
+        
+        # 4. 都无效时返回None，将使用无模板模式
+        self.logger.info("未找到有效模板，将使用无模板模式")
+        return None
 
     def convert(self, input_path: str) -> List[str]:
         """
@@ -1292,6 +1330,15 @@ class MdToOfficeConverter(BaseConverter):
                 Path(self.template_path).exists() and 
                 WIN32COM_AVAILABLE
             )
+            
+            # 记录模板使用状态
+            if self.template_path:
+                if Path(self.template_path).exists():
+                    self.logger.info(f"模板文件有效: {self.template_path}")
+                else:
+                    self.logger.error(f"模板文件不存在: {self.template_path}")
+            else:
+                self.logger.info("未配置模板路径，将使用无模板模式")
 
             if use_advanced_template:
                 # --- Advanced Template Path (Windows Only) ---

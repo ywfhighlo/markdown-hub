@@ -53,7 +53,8 @@ export async function handleConvertCommand(
                 if (conversionType === 'md-to-docx' || conversionType === 'md-to-pdf') {
                     if (config.get<boolean>('useDocxTemplate', true)) {
                         let templatePath = config.get<string>('docxTemplatePath', '');
-                        if (!templatePath) {
+                        if (!templatePath || templatePath.trim() === '') {
+                            // 当启用模板但未指定路径时，使用默认模板
                             templatePath = path.join(context.extensionPath, 'backend', 'converters', 'templates', 'template.docx');
                         }
                         conversionOptions.docxTemplatePath = templatePath;
@@ -65,7 +66,8 @@ export async function handleConvertCommand(
                 } else if (conversionType === 'md-to-pptx') {
                     if (config.get<boolean>('usePptxTemplate', true)) {
                         let templatePath = config.get<string>('pptxTemplatePath', '');
-                        if (!templatePath) {
+                        if (!templatePath || templatePath.trim() === '') {
+                            // 当启用模板但未指定路径时，使用默认模板
                             templatePath = path.join(context.extensionPath, 'backend', 'converters', 'templates', 'template.pptx');
                         }
                         conversionOptions.pptxTemplatePath = templatePath;
