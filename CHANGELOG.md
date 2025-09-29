@@ -2,6 +2,16 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
+## [0.3.4] - 2025-9-29
+
+### Added
+- 支持在markdown中插入 PlantUML 图表链接
+- 支持drawio图表转化为PNG图片
+
+### Fixed
+- 修复了没有指定模板时，docx文档字体设置为斜体的问题
+- 修复了md非标准列表格式导致所有列表内容显示在同一行的问题
+
 ## [0.3.3] - 2025-9-21
 
 ### Added
@@ -30,7 +40,6 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - **图表转换**
   - SVG → PNG
   - Mermaid → PNG
-  - Draw.io → PNG
   - PlantUML → PNG
 
 - **批量处理**
