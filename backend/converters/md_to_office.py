@@ -2,6 +2,7 @@ from typing import List, Optional
 import os
 from .base_converter import BaseConverter
 from .batik_converter import BatikConverter
+from .plantuml_converter import PlantUMLConverter
 import json
 import subprocess
 import platform
@@ -1152,6 +1153,15 @@ class MdToOfficeConverter(BaseConverter):
             self.logger.error(f"SVG处理失败: {e}")
             # SVG处理失败不影响其他功能，继续执行
 
+        # PlantUML文件链接处理
+        try:
+            self.logger.info("开始处理PlantUML文件链接...")
+            content, plantuml_temp_files = self._process_plantuml_file_links(content, md_dir)
+            temp_files.extend(plantuml_temp_files)
+            self.logger.info(f"PlantUML文件链接处理完成，生成了 {len(plantuml_temp_files)} 个PNG文件")
+        except Exception as e:
+            self.logger.error(f"PlantUML文件链接处理失败: {e}")
+
         # Mermaid图表处理
         if self._check_tool_availability("mmdc"):
             def replace_mermaid(match):
@@ -1610,7 +1620,113 @@ class MdToOfficeConverter(BaseConverter):
         """
         if not WIN32COM_AVAILABLE:
             self.logger.warning("在非Windows系统上无法使用模板功能，将使用简单转换")
-            return content_path
+            return content
+    
+    def _process_plantuml_file_links(self, content: str, md_dir: Path) -> tuple[str, List[str]]:
+        """
+        处理Markdown中的PlantUML文件链接，将其转换为PNG图片链接
+        
+        Args:
+            content: Markdown内容
+            md_dir: Markdown文件所在目录
+            
+        Returns:
+            tuple: (处理后的内容, 生成的临时文件列表)
+        """
+        temp_files = []
+        
+        # 匹配PlantUML文件链接的正则表达式
+        # 支持 ![alt](path.puml), ![alt](path.plantuml), ![alt](path.pu)
+        plantuml_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+\.(?:puml|plantuml|pu))\)', re.IGNORECASE)
+        
+        def replace_plantuml_link(match):
+            alt_text = match.group(1)
+            puml_path = match.group(2)
+            
+            # 处理相对路径
+            if not os.path.isabs(puml_path):
+                full_puml_path = md_dir / puml_path
+            else:
+                full_puml_path = Path(puml_path)
+            
+            # 检查PlantUML文件是否存在
+            if not full_puml_path.exists():
+                self.logger.warning(f"PlantUML文件不存在: {full_puml_path}")
+                return match.group(0)  # 返回原始链接
+            
+            try:
+                # 首先检查是否已经存在对应的PNG文件
+                puml_stem = full_puml_path.stem
+                existing_png_candidates = [
+                    self.output_dir / f"{puml_stem}.png",
+                    md_dir / f"{puml_stem}.png",
+                    Path(f"{puml_stem}.png")
+                ]
+                
+                existing_png = None
+                for candidate in existing_png_candidates:
+                    if candidate.exists():
+                        existing_png = candidate
+                        break
+                
+                if existing_png:
+                    # 使用已存在的PNG文件
+                    try:
+                        relative_png_path = existing_png.relative_to(md_dir)
+                    except ValueError:
+                        # 如果无法计算相对路径，复制文件到Markdown目录
+                        import shutil
+                        target_png = md_dir / f"{puml_stem}.png"
+                        shutil.copy2(existing_png, target_png)
+                        relative_png_path = target_png.name
+                        temp_files.append(str(target_png))
+                    
+                    new_link = f"![{alt_text}]({relative_png_path})"
+                    self.logger.info(f"使用已存在的PNG文件: {puml_path} -> {relative_png_path}")
+                    return new_link
+                
+                # 如果没有现成的PNG文件，尝试转换
+                plantuml_converter = PlantUMLConverter(str(self.output_dir))
+                
+                # 转换PlantUML文件为PNG
+                result = plantuml_converter.convert(str(full_puml_path))
+                
+                if result and len(result) > 0:
+                    png_path = Path(result[0])
+                    if png_path.exists():
+                        # 记录临时文件
+                        temp_files.append(str(png_path))
+                        
+                        # 计算相对于Markdown文件的PNG路径
+                        try:
+                            relative_png_path = png_path.relative_to(md_dir)
+                        except ValueError:
+                            # 如果无法计算相对路径，复制文件到Markdown目录
+                            import shutil
+                            target_png = md_dir / f"{puml_stem}.png"
+                            shutil.copy2(png_path, target_png)
+                            relative_png_path = target_png.name
+                            temp_files.append(str(target_png))
+                        
+                        # 返回新的图片链接
+                        new_link = f"![{alt_text}]({relative_png_path})"
+                        self.logger.info(f"PlantUML转换成功: {puml_path} -> {relative_png_path}")
+                        return new_link
+                    else:
+                        self.logger.error(f"PlantUML转换失败，PNG文件不存在: {png_path}")
+                else:
+                    self.logger.error(f"PlantUML转换失败: {full_puml_path}")
+                    
+            except Exception as e:
+                self.logger.error(f"PlantUML转换异常: {full_puml_path}, 错误: {e}")
+            
+            # 转换失败时返回原始链接
+            return match.group(0)
+        
+        # 替换所有PlantUML文件链接
+        processed_content = plantuml_pattern.sub(replace_plantuml_link, content)
+        
+        return processed_content, temp_files
             
         # Create a deterministic final output path based on the original input file.
         original_input_path = Path(original_input_file)
