@@ -1335,12 +1335,25 @@ class MdToOfficeConverter(BaseConverter):
                     # Note: all_temp_files will be cleaned up in the finally block.
                     return final_output_path
                 else:
-                    self.logger.warning("模板合成失败，返回无模板的DOCX文件。")
-                    # It failed and returned the original content_path. We must rename it to a non-temp name.
-                    final_path_on_failure = self.output_dir / f"{input_path.stem}.docx"
-                    shutil.move(temp_content_docx, final_path_on_failure)
-                    all_temp_files.remove(str(temp_content_docx)) # Don't delete it
-                    return str(final_path_on_failure)
+                    self.logger.warning("模板合成失败，使用简单参考文档重新转换。")
+                    # 模板合成失败时，使用简单参考文档重新转换以确保字体设置生效
+                    
+                    # 删除失败的临时文件
+                    if Path(temp_content_docx).exists():
+                        os.remove(temp_content_docx)
+                        all_temp_files.remove(str(temp_content_docx))
+                    
+                    # 重新转换，这次不使用模板，让它走简单参考文档的路径
+                    self.logger.info("重新转换，使用简单参考文档确保字体设置")
+                    original_template = self.template_path
+                    self.template_path = None  # 临时清除模板路径
+                    
+                    try:
+                        # 递归调用自己，但这次不会使用模板
+                        result = self._convert_to_docx(input_file, to_pdf)
+                        return result
+                    finally:
+                        self.template_path = original_template  # 恢复原始模板路径
             else:
                 # --- Simple/Cross-Platform Path ---
                 if self.template_path:
@@ -1361,8 +1374,58 @@ class MdToOfficeConverter(BaseConverter):
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
                 ]
-                # Use --reference-doc for styling, same as PPTX conversion
-                if self.template_path and Path(self.template_path).exists():
+                
+                # 如果没有提供模板，创建一个简单的参考文档来控制字体
+                if not (self.template_path and Path(self.template_path).exists()):
+                    # 创建一个简单的参考文档来强制设置字体
+                    self.logger.info("未提供DOCX模板，创建简单参考文档")
+                    
+                    # 创建一个最小的参考文档
+                    temp_ref_path = self.output_dir / f"temp_ref_{os.getpid()}.docx"
+                    
+                    try:
+                        # 使用python-docx创建一个简单的参考文档
+                        from docx import Document
+                        from docx.shared import Pt
+                        from docx.enum.style import WD_STYLE_TYPE
+                        
+                        ref_doc = Document()
+                        
+                        # 修改Normal样式
+                        normal_style = ref_doc.styles['Normal']
+                        normal_font = normal_style.font
+                        normal_font.name = 'Times New Roman'
+                        normal_font.size = Pt(12)
+                        normal_font.italic = False
+                        normal_font.bold = False
+                        
+                        # 修改标题样式
+                        for i in range(1, 4):
+                            try:
+                                heading_style = ref_doc.styles[f'Heading {i}']
+                                heading_font = heading_style.font
+                                heading_font.name = 'Times New Roman'
+                                heading_font.italic = False
+                                heading_font.bold = True
+                            except:
+                                pass
+                        
+                        # 添加一些示例内容
+                        ref_doc.add_paragraph("Sample text")
+                        ref_doc.save(str(temp_ref_path))
+                        
+                        cmd.extend(['--reference-doc', str(temp_ref_path)])
+                        all_temp_files.append(str(temp_ref_path))
+                        
+                    except Exception as e:
+                        self.logger.warning(f"创建参考文档失败: {e}，使用Pandoc变量")
+                        cmd.extend([
+                            '--variable', 'mainfont:Times New Roman',
+                            '--variable', 'CJKmainfont:SimSun',
+                            '--variable', 'fontsize:12pt'
+                        ])
+                else:
+                    # Use --reference-doc for styling, same as PPTX conversion
                     cmd.extend(['--reference-doc', self.template_path])
 
                 # 标题提级现在在预处理阶段处理，不再使用Pandoc参数
