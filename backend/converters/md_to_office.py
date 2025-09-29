@@ -1689,7 +1689,60 @@ class MdToOfficeConverter(BaseConverter):
         """
         if not WIN32COM_AVAILABLE:
             self.logger.warning("在非Windows系统上无法使用模板功能，将使用简单转换")
-            return content
+            return content_path
+        
+        # Create a deterministic final output path based on the original input file.
+        original_input_path = Path(original_input_file)
+        output_path = str(self.output_dir / f"{original_input_path.stem}.docx")
+        
+        try:
+            # 获取模板上下文数据
+            context = {
+                'project_name': self.project_name or '',
+                'title': title,
+                'document_no': "P" + datetime.now().strftime("%Y%m%d%H%M%S"),
+                'date': datetime.now().strftime("%Y-%m-%d"),
+                'author': self.author or '',
+                'mobilephone': self.mobilephone or '',
+                'email': self.email or ''
+            }
+            
+            self.logger.info(f"使用模板: {template_path}")
+            self.logger.info(f"模板上下文: {context}")
+            
+            # 使用DocxTemplate渲染模板
+            doc_tpl = DocxTemplate(template_path)
+            doc_tpl.render(context)
+            doc_tpl.save(output_path)
+
+            # 加载渲染后的模板文档
+            master = Document(output_path)
+            
+            # 创建composer对象
+            composer = Composer(master)
+            
+            # 加载内容文档
+            content_doc = Document(content_path)
+            
+            # 在模板文档末尾添加连续分节符
+            section = master.add_section()
+            section.start_type = WD_SECTION_START.CONTINUOUS
+            
+            # 合并文档，保留样式
+            composer.append(content_doc)
+            
+            # 更新文档属性
+            master.core_properties.title = title
+            
+            # 保存合并后的文档
+            composer.save(output_path)
+            
+            self.logger.info(f"模板处理成功: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            self.logger.error(f"模板处理失败: {e}")
+            return content_path
     
     def _process_plantuml_file_links(self, content: str, md_dir: Path) -> tuple[str, List[str]]:
         """
@@ -1796,62 +1849,6 @@ class MdToOfficeConverter(BaseConverter):
         processed_content = plantuml_pattern.sub(replace_plantuml_link, content)
         
         return processed_content, temp_files
-            
-        # Create a deterministic final output path based on the original input file.
-        original_input_path = Path(original_input_file)
-        output_path = str(self.output_dir / f"{original_input_path.stem}.docx")
-        
-        try:
-            # 获取模板上下文数据
-            context = {
-                'project_name': self.project_name or '',
-                'title': title,
-                'document_no': "P" + datetime.now().strftime("%Y%m%d%H%M%S"),
-                'date': datetime.now().strftime("%Y-%m-%d"),
-                'author': self.author or '',
-                'mobilephone': self.mobilephone or '',
-                'email': self.email or ''
-            }
-            
-            self.logger.info(f"使用模板: {template_path}")
-            self.logger.info(f"模板上下文: {context}")
-            
-            # 使用DocxTemplate渲染模板
-            doc_tpl = DocxTemplate(template_path)
-            doc_tpl.render(context)
-            doc_tpl.save(output_path)
-
-            # 加载渲染后的模板文档
-            master = Document(output_path)
-            
-            # 创建composer对象
-            composer = Composer(master)
-            
-            # 加载内容文档
-            content_doc = Document(content_path)
-            
-            # 在模板文档末尾添加连续分节符
-            section = master.add_section()
-            section.start_type = WD_SECTION_START.CONTINUOUS
-            
-            # 合并文档，保留样式
-            composer.append(content_doc)
-            
-            # 更新文档属性
-            master.core_properties.title = title
-            
-            # 保存合并后的文档
-            composer.save(output_path)
-            
-            self.logger.info(f"模板处理成功: {output_path}")
-            return output_path
-            
-        except Exception as e:
-            self.logger.error(f"模板处理失败: {e}")
-            import traceback
-            self.logger.error(f"详细错误信息: {traceback.format_exc()}")
-            # On failure, return the path to the original content so it can be handled upstream
-            return content_path
     
     def _post_process_html(self, html_file: str, processed_md_file: str):
         """后处理HTML文件，添加样式和目录"""
