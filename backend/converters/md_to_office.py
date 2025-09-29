@@ -1176,6 +1176,12 @@ class MdToOfficeConverter(BaseConverter):
                     return f"```mermaid\n{code}\n```"
             content = re.sub(r'```mermaid\n(.*?)\n```', replace_mermaid, content, flags=re.DOTALL)
 
+        # 非标准无序列表格式处理 - 将 • 转换为标准的 - 格式
+        content = self._normalize_unordered_lists(content)
+        
+        # 确保列表前有空行，以便Pandoc正确识别
+        content = self._ensure_list_spacing(content)
+        
         # 表格列宽优化处理
         content = self._optimize_table_column_widths(content)
 
@@ -1869,6 +1875,181 @@ class MdToOfficeConverter(BaseConverter):
         }
         """
     
+    def _normalize_unordered_lists(self, content: str) -> str:
+        """
+        将非标准的无序列表格式转换为标准的Markdown格式。
+        支持的转换：
+        1. 非标准符号：• ◦ ▪ ▫ ‣ → -
+        2. 数字编号列表：1. 2. 3. → - （转换为无序列表）
+        3. 表格中的HTML列表：<br>• → <br>-
+        
+        转换规则：
+        1. 识别各种列表格式
+        2. 保持原有的缩进层级
+        3. 统一转换为标准的 - 符号
+        4. 确保列表项前后有适当的空行
+        """
+        try:
+            lines = content.split('\n')
+            processed_lines = []
+            
+            # 定义各种列表格式的正则表达式
+            # 1. 非标准符号列表：可选空白 + 非标准符号 + 空格 + 内容
+            non_standard_list_pattern = re.compile(r'^(\s*)[•◦▪▫‣]\s+(.+)$')
+            
+            # 2. 数字编号列表：可选空白 + 数字 + 点 + 空格 + 内容
+            numbered_list_pattern = re.compile(r'^(\s*)(\d+)\.\s+(.+)$')
+            
+            # 3. 标准列表标记
+            standard_list_markers = ('- ', '* ', '+ ')
+            
+            # 4. 表格中的HTML列表（处理表格内的非标准符号）
+            def process_table_lists(line):
+                # 匹配表格行中的 <br>• 格式
+                table_list_pattern = re.compile(r'(<br>\s*)[•◦▪▫‣](\s+)')
+                return table_list_pattern.sub(r'\1-\2', line)
+            
+            for i, line in enumerate(lines):
+                original_line = line
+                
+                # 首先处理表格中的HTML列表
+                line = process_table_lists(line)
+                
+                # 检查是否为非标准符号列表项
+                non_standard_match = non_standard_list_pattern.match(line)
+                numbered_match = numbered_list_pattern.match(line)
+                
+                if non_standard_match:
+                    indent = non_standard_match.group(1)  # 保持原有缩进
+                    content_text = non_standard_match.group(2)  # 列表项内容
+                    
+                    # 转换为标准格式
+                    standard_line = f"{indent}- {content_text}"
+                    
+                    # 检查是否需要在列表前添加空行
+                    if i > 0:
+                        prev_line = lines[i-1]
+                        prev_stripped = prev_line.strip()
+                        
+                        # 如果前一行不是空行且不是列表项，添加空行
+                        if (prev_stripped and 
+                            not any(prev_line.lstrip().startswith(marker) for marker in standard_list_markers) and
+                            not non_standard_list_pattern.match(prev_line) and
+                            not numbered_list_pattern.match(prev_line)):
+                            processed_lines.append("")
+                    
+                    processed_lines.append(standard_line)
+                    self.logger.debug(f"转换非标准列表项: '{original_line.strip()}' -> '{standard_line.strip()}'")
+                    
+                elif numbered_match:
+                    indent = numbered_match.group(1)  # 保持原有缩进
+                    number = numbered_match.group(2)  # 原始数字（用于日志）
+                    content_text = numbered_match.group(3)  # 列表项内容
+                    
+                    # 转换为标准无序列表格式
+                    standard_line = f"{indent}- {content_text}"
+                    
+                    # 检查是否需要在列表前添加空行
+                    if i > 0:
+                        prev_line = lines[i-1]
+                        prev_stripped = prev_line.strip()
+                        
+                        # 如果前一行不是空行且不是列表项，添加空行
+                        if (prev_stripped and 
+                            not any(prev_line.lstrip().startswith(marker) for marker in standard_list_markers) and
+                            not non_standard_list_pattern.match(prev_line) and
+                            not numbered_list_pattern.match(prev_line)):
+                            processed_lines.append("")
+                    
+                    processed_lines.append(standard_line)
+                    self.logger.debug(f"转换数字列表项: '{original_line.strip()}' -> '{standard_line.strip()}'")
+                    
+                else:
+                    # 不是列表项，直接添加（可能已经处理了表格中的HTML列表）
+                    processed_lines.append(line)
+                    if line != original_line:
+                        self.logger.debug(f"转换表格列表: '{original_line.strip()}' -> '{line.strip()}'")
+            
+            result = '\n'.join(processed_lines)
+            
+            # 统计转换的数量
+            non_standard_count = len(non_standard_list_pattern.findall(content))
+            numbered_count = len(numbered_list_pattern.findall(content))
+            table_list_count = len(re.findall(r'<br>\s*[•◦▪▫‣]\s+', content))
+            
+            total_converted = non_standard_count + numbered_count + table_list_count
+            if total_converted > 0:
+                self.logger.info(f"列表格式转换完成: 非标准符号 {non_standard_count} 个, 数字列表 {numbered_count} 个, 表格列表 {table_list_count} 个")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"非标准列表格式转换失败: {e}")
+            return content
+
+    def _ensure_list_spacing(self, content: str) -> str:
+        """
+        确保列表前有空行，以便Pandoc正确识别列表格式。
+        
+        处理规则：
+        1. 检测标准列表项（以 -, *, + 开头）
+        2. 如果列表项前一行不是空行且不是列表项，则添加空行
+        3. 特别处理紧跟在标题、粗体文本等后面的列表
+        """
+        try:
+            lines = content.split('\n')
+            processed_lines = []
+            
+            # 标准列表标记
+            list_markers = ('- ', '* ', '+ ')
+            
+            for i, line in enumerate(lines):
+                current_line = line
+                stripped_line = line.lstrip()
+                
+                # 检查当前行是否为列表项
+                is_current_list_item = any(stripped_line.startswith(marker) for marker in list_markers)
+                
+                if is_current_list_item and i > 0:
+                    # 获取前一行
+                    prev_line = lines[i-1]
+                    prev_stripped = prev_line.strip()
+                    prev_line_stripped_left = prev_line.lstrip()
+                    
+                    # 检查前一行是否为列表项
+                    is_prev_list_item = any(prev_line_stripped_left.startswith(marker) for marker in list_markers)
+                    
+                    # 如果前一行不是空行且不是列表项，则需要添加空行
+                    if prev_stripped and not is_prev_list_item:
+                        # 特别检查一些常见的需要添加空行的情况
+                        needs_spacing = (
+                            # 前一行以冒号结尾（如 "**预期结果**："）
+                            prev_stripped.endswith(':') or
+                            # 前一行是粗体文本
+                            prev_stripped.startswith('**') and prev_stripped.endswith('**') or
+                            # 前一行是普通文本段落
+                            not prev_stripped.startswith('#') and not prev_stripped.startswith('>')
+                        )
+                        
+                        if needs_spacing:
+                            processed_lines.append("")  # 添加空行
+                            self.logger.debug(f"在列表前添加空行: 第{i+1}行 '{stripped_line[:50]}...'")
+                
+                processed_lines.append(current_line)
+            
+            result = '\n'.join(processed_lines)
+            
+            # 统计添加的空行数量
+            added_lines = len(processed_lines) - len(lines)
+            if added_lines > 0:
+                self.logger.info(f"为确保列表正确识别，添加了 {added_lines} 个空行")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"列表间距处理失败: {e}")
+            return content
+
     def _optimize_table_column_widths(self, content: str) -> str:
         """
         优化表格列宽分配，特别处理第一列：
