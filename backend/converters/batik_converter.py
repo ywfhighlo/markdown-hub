@@ -149,13 +149,24 @@ class BatikConverter(BaseConverter):
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
             
-            # 执行转换
-            success = self._execute_batik_command(input_path, output_path)
+            # 预处理SVG文件，修复Batik不兼容的语法
+            processed_svg_path = self._preprocess_svg_for_batik(input_path)
             
-            if success:
-                return True, f"转换成功: {input_path} -> {output_path}"
-            else:
-                return False, f"转换失败: {input_path}"
+            try:
+                # 执行转换
+                success = self._execute_batik_command(processed_svg_path, output_path)
+                
+                if success:
+                    return True, f"转换成功: {input_path} -> {output_path}"
+                else:
+                    return False, f"转换失败: {input_path}"
+            finally:
+                # 清理临时文件
+                if processed_svg_path != input_path and os.path.exists(processed_svg_path):
+                    try:
+                        os.unlink(processed_svg_path)
+                    except:
+                        pass
                 
         except Exception as e:
             error_msg = f"转换过程中发生错误: {str(e)}"
@@ -178,15 +189,26 @@ class BatikConverter(BaseConverter):
             
             self.logger.info(f"开始转换SVG文件: {input_file} -> {output_file}")
             
-            # 执行转换
-            success = self._execute_batik_command(str(input_file), str(output_file))
+            # 预处理SVG文件
+            processed_svg_path = self._preprocess_svg_for_batik(str(input_file))
             
-            if success and output_file.exists():
-                self.logger.info(f"Batik转换成功: {output_file}")
-                return str(output_file)
-            else:
-                self.logger.error(f"Batik转换失败: {input_file}")
-                return None
+            try:
+                # 执行转换
+                success = self._execute_batik_command(processed_svg_path, str(output_file))
+                
+                if success and output_file.exists():
+                    self.logger.info(f"Batik转换成功: {output_file}")
+                    return str(output_file)
+                else:
+                    self.logger.error(f"Batik转换失败: {input_file}")
+                    return None
+            finally:
+                # 清理临时文件
+                if processed_svg_path != str(input_file) and os.path.exists(processed_svg_path):
+                    try:
+                        os.unlink(processed_svg_path)
+                    except:
+                        pass
                 
         except Exception as e:
             self._handle_conversion_error(e, file_path)
@@ -354,8 +376,80 @@ class BatikConverter(BaseConverter):
                 shell=True  # 在Windows上需要shell=True
             )
             
+            # 详细记录输出信息
+            self.logger.info(f"Batik返回码: {result.returncode}")
+            if result.stdout:
+                self.logger.info(f"Batik标准输出: {result.stdout}")
+            if result.stderr:
+                self.logger.info(f"Batik错误输出: {result.stderr}")
+            
             if result.returncode == 0:
-                return True
+                # 检查输出文件是否实际生成
+                # Batik会在输出目录中生成与输入文件同名的PNG文件
+                input_filename = os.path.splitext(os.path.basename(input_file))[0] + '.png'
+                output_dir = os.path.dirname(output_file)
+                actual_output_file = os.path.join(output_dir, input_filename)
+                
+                # 如果输出目录不存在，创建它
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir, exist_ok=True)
+                
+                # 检查输出文件是否生成
+                # Batik会在输出目录中生成与输入文件同名的PNG文件
+                input_basename = os.path.splitext(os.path.basename(input_file))[0]
+                expected_output_name = input_basename + '.png'
+                expected_output_path = os.path.join(output_dir, expected_output_name)
+                
+                self.logger.info(f"检查输出文件: {expected_output_path}")
+                
+                if os.path.exists(expected_output_path):
+                    file_size = os.path.getsize(expected_output_path)
+                    self.logger.info(f"找到输出文件: {expected_output_path}, 大小: {file_size} 字节")
+                    if file_size > 0:
+                        # 如果输出文件名与期望的不同，重命名它
+                        if expected_output_path != output_file:
+                            try:
+                                # 确保目标目录存在
+                                target_dir = os.path.dirname(output_file)
+                                if target_dir and not os.path.exists(target_dir):
+                                    os.makedirs(target_dir, exist_ok=True)
+                                
+                                # 移动文件到目标位置
+                                import shutil
+                                shutil.move(expected_output_path, output_file)
+                                self.logger.info(f"重命名输出文件: {expected_output_path} -> {output_file}")
+                            except Exception as e:
+                                self.logger.error(f"重命名文件失败: {e}")
+                                return False
+                        return True
+                    else:
+                        self.logger.error("输出文件为空")
+                        return False
+                elif os.path.exists(output_file):
+                    file_size = os.path.getsize(output_file)
+                    self.logger.info(f"输出文件: {output_file}, 大小: {file_size} 字节")
+                    return file_size > 0
+                else:
+                    self.logger.error(f"输出文件未生成，期望: {expected_output_path} 或 {output_file}")
+                    # 列出输出目录的内容以便调试
+                    if os.path.exists(output_dir):
+                        files = os.listdir(output_dir)
+                        self.logger.error(f"输出目录内容: {files}")
+                        # 检查是否有任何PNG文件
+                        png_files = [f for f in files if f.endswith('.png')]
+                        if png_files:
+                            self.logger.info(f"发现PNG文件: {png_files}")
+                            # 尝试使用第一个PNG文件
+                            first_png = os.path.join(output_dir, png_files[0])
+                            if os.path.getsize(first_png) > 0:
+                                try:
+                                    import shutil
+                                    shutil.move(first_png, output_file)
+                                    self.logger.info(f"使用找到的PNG文件: {first_png} -> {output_file}")
+                                    return True
+                                except Exception as e:
+                                    self.logger.error(f"移动PNG文件失败: {e}")
+                    return False
             else:
                 error_msg = self._parse_batik_error(result.stderr or result.stdout)
                 self.logger.error(f"Batik转换失败: {error_msg}")
@@ -485,6 +579,50 @@ class BatikConverter(BaseConverter):
             self.logger.error("建议: 请检查Batik JAR包是否存在")
         elif "timeout" in error_msg.lower():
             self.logger.error(f"建议: 文件可能过大，请增加超时时间（当前: {self.batik_config.timeout}秒）")
+
+    def _preprocess_svg_for_batik(self, input_path: str) -> str:
+        """
+        预处理SVG文件，修复Batik不兼容的SVG 2.0语法
+        
+        Args:
+            input_path: 原始SVG文件路径
+            
+        Returns:
+            str: 处理后的SVG文件路径（可能是临时文件）
+        """
+        try:
+            # 读取SVG内容
+            with open(input_path, 'r', encoding='utf-8') as f:
+                svg_content = f.read()
+            
+            # 检查是否需要修复
+            needs_fix = False
+            original_content = svg_content
+            
+            # 修复 orient="auto-start-reverse" -> orient="auto"
+            if 'orient="auto-start-reverse"' in svg_content:
+                svg_content = svg_content.replace('orient="auto-start-reverse"', 'orient="auto"')
+                needs_fix = True
+                self.logger.info("修复了 orient='auto-start-reverse' 语法")
+            
+            # 修复其他可能的SVG 2.0不兼容语法
+            # 可以在这里添加更多的修复规则
+            
+            # 如果不需要修复，直接返回原文件路径
+            if not needs_fix:
+                return input_path
+            
+            # 创建临时文件保存修复后的SVG
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.svg', delete=False, encoding='utf-8') as f:
+                f.write(svg_content)
+                temp_path = f.name
+            
+            self.logger.info(f"创建了预处理的临时SVG文件: {temp_path}")
+            return temp_path
+            
+        except Exception as e:
+            self.logger.warning(f"SVG预处理失败，使用原文件: {e}")
+            return input_path
 
     def _log_dependency_status(self, status: BatikDependencyStatus) -> None:
         """记录依赖状态日志"""
