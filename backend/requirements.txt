@@ -57,3 +57,9 @@ typing-extensions>=4.0.0
 # 1. pandoc - Mac: brew install pandoc, Windows: 下载安装包
 # 2. Office处理: Windows需要Microsoft Word, Mac可用LibreOffice
 # 3. Tesseract OCR: Mac: brew install tesseract
+# 4. Java运行环境 - 用于SVG转换（项目内置Batik转换器）
+# 5. draw.io桌面版 - 用于Draw.io文件转PNG转换
+#    下载地址: https://github.com/jgraph/drawio-desktop/releases
+#    Mac: brew install --cask drawio
+#    Windows/Linux: 从GitHub下载对应安装包
+# 6. Mermaid CLI (可选) - npm install -g @mermaid-js/mermaid-cli

@@ -54,7 +54,7 @@ class DiagramToPngConverter(BaseConverter):
             
         # 检查外部工具
         tools_status = {}
-        external_tools = ['rsvg-convert', 'mmdc']
+        external_tools = ['mmdc']  # 移除rsvg-convert，主要使用Batik
         
         for tool in external_tools:
             if self._check_tool_availability(tool):
@@ -62,6 +62,15 @@ class DiagramToPngConverter(BaseConverter):
                 self.logger.info(f"检测到外部工具: {tool}")
             else:
                 tools_status[tool] = False
+        
+        # 检查draw.io桌面版
+        drawio_path = self._find_drawio_executable()
+        if drawio_path:
+            tools_status['drawio'] = True
+            self.logger.info(f"检测到draw.io桌面版: {drawio_path}")
+        else:
+            tools_status['drawio'] = False
+            self.logger.warning("未检测到draw.io桌面版，Draw.io转换功能将不可用")
                 
         self.tools_status = tools_status
         
@@ -71,6 +80,50 @@ class DiagramToPngConverter(BaseConverter):
     def _check_tool_availability(self, tool_name: str) -> bool:
         """检查外部工具是否可用"""
         return shutil.which(tool_name) is not None
+    
+    def _find_drawio_executable(self) -> Optional[str]:
+        """查找draw.io桌面版可执行文件路径"""
+        import platform
+        
+        # 常见的draw.io安装路径
+        possible_paths = []
+        
+        system = platform.system().lower()
+        if system == "windows":
+            # Windows路径
+            username = os.getenv('USERNAME', '')
+            possible_paths = [
+                f"C:\\Users\\{username}\\AppData\\Local\\Programs\\draw.io\\draw.io.exe",
+                "C:\\Program Files\\draw.io\\draw.io.exe",
+                "C:\\Program Files (x86)\\draw.io\\draw.io.exe",
+            ]
+        elif system == "darwin":
+            # macOS路径
+            possible_paths = [
+                "/Applications/draw.io.app/Contents/MacOS/draw.io",
+                "/Applications/drawio.app/Contents/MacOS/drawio",
+            ]
+        elif system == "linux":
+            # Linux路径
+            possible_paths = [
+                "/usr/bin/drawio",
+                "/usr/local/bin/drawio",
+                "/opt/drawio/drawio",
+                "/snap/bin/drawio",
+            ]
+        
+        # 首先检查PATH中是否有drawio命令
+        if shutil.which("drawio"):
+            return "drawio"
+        if shutil.which("draw.io"):
+            return "draw.io"
+        
+        # 检查常见安装路径
+        for path in possible_paths:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+        
+        return None
     
     def convert(self, input_path: str) -> List[str]:
         """
@@ -185,13 +238,10 @@ class DiagramToPngConverter(BaseConverter):
     def _convert_svg_to_png(self, svg_file: Path, output_file: Path) -> bool:
         """
         SVG转PNG转换
-        根据配置使用不同的转换方法
-        
-        支持的转换方法：
-        1. batik - 使用Batik转换器 (默认)
-        2. rsvg-convert - 命令行工具
+        主要使用内置的Batik转换器，提供高质量的SVG到PNG转换
         """
-        if self.svg_conversion_method == 'batik' and hasattr(self, 'batik_converter'):
+        # 使用Batik转换器进行SVG转换
+        if hasattr(self, 'batik_converter'):
             try:
                 success, message = self.batik_converter.convert_to_file(str(svg_file), str(output_file))
                 if success:
@@ -199,25 +249,13 @@ class DiagramToPngConverter(BaseConverter):
                     return True
                 else:
                     self.logger.error(f"Batik 转换失败: {message}")
+                    return False
             except Exception as e:
                 self.logger.error(f"Batik 转换异常: {str(e)}")
-        
-        # 如果Batik转换失败或未配置，尝试rsvg-convert
-        methods = [
-            ("rsvg-convert", self._convert_with_rsvg)
-        ]
-        
-        for method_name, method_func in methods:
-            try:
-                if method_func(svg_file, output_file, self.dpi):
-                    self.logger.info(f"使用 {method_name} 成功转换 {svg_file.name}")
-                    return True
-            except Exception as e:
-                self.logger.debug(f"{method_name} 转换失败: {str(e)}")
-                continue
-        
-        self.logger.error(f"所有转换方法都失败了: {svg_file}")
-        return False
+                return False
+        else:
+            self.logger.error("Batik转换器未初始化")
+            return False
     
     def _convert_plantuml_to_png(self, plantuml_file: Path, output_file: Path) -> bool:
         """
@@ -256,30 +294,6 @@ class DiagramToPngConverter(BaseConverter):
         except Exception as e:
             self.logger.error(f"转换PlantUML文件失败: {str(e)}")
             return False
-    
-    def _convert_with_rsvg(self, svg_file: Path, output_file: Path, dpi: int) -> bool:
-        """使用rsvg-convert转换SVG"""
-        if not self.tools_status.get('rsvg-convert', False):
-            return False
-            
-        try:
-            cmd = [
-                "rsvg-convert",
-                "-o", str(output_file),
-                "-d", str(dpi),
-                "-p", str(dpi),
-                str(svg_file)
-            ]
-            
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            return result.returncode == 0
-            
-        except Exception:
-            return False
-    
-
-    
-
     
     def _convert_mermaid_to_png(self, mermaid_file: Path, output_file: Path) -> bool:
         """
@@ -328,9 +342,59 @@ class DiagramToPngConverter(BaseConverter):
     def _convert_drawio_to_png(self, drawio_file: Path, output_file: Path) -> bool:
         """
         转换Draw.io文件到PNG
-        需要安装draw.io命令行工具
+        使用draw.io桌面版的命令行导出功能
         """
-        # Draw.io转换需要特殊的工具，这里提供一个基本实现
-        self.logger.warning("Draw.io转换功能需要额外的工具支持")
-        self.logger.info("请考虑手动导出为SVG格式，然后使用SVG转换功能")
-        return False
+        if not self.tools_status.get('drawio', False):
+            self.logger.error("draw.io桌面版未安装，无法转换Draw.io文件")
+            self.logger.info("请从 https://github.com/jgraph/drawio-desktop/releases 下载安装draw.io桌面版")
+            return False
+        
+        drawio_path = self._find_drawio_executable()
+        if not drawio_path:
+            self.logger.error("无法找到draw.io可执行文件")
+            return False
+        
+        try:
+            # 构建转换命令
+            # draw.io命令行参数：--export --format png --output 输出文件 输入文件
+            cmd = [
+                drawio_path,
+                "--export",
+                "--format", "png",
+                "--scale", "2",  # 2倍缩放提高质量
+                "--border", "10",  # 添加边框
+                "--output", str(output_file),
+                str(drawio_file)
+            ]
+            
+            self.logger.debug(f"执行命令: {' '.join(cmd)}")
+            
+            # 执行转换命令，设置超时防止卡死
+            result = subprocess.run(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True,
+                timeout=60  # 60秒超时
+            )
+            
+            if result.returncode == 0:
+                # 检查输出文件是否生成
+                if output_file.exists() and output_file.stat().st_size > 0:
+                    self.logger.info(f"成功转换Draw.io文件: {drawio_file.name}")
+                    return True
+                else:
+                    self.logger.error("转换命令执行成功但未生成输出文件")
+                    return False
+            else:
+                self.logger.error(f"Draw.io转换失败，返回码: {result.returncode}")
+                if result.stderr:
+                    self.logger.error(f"错误信息: {result.stderr}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            self.logger.error("Draw.io转换超时（60秒）")
+            return False
+        except Exception as e:
+            self.logger.error(f"转换Draw.io文件时发生异常: {str(e)}")
+            return False

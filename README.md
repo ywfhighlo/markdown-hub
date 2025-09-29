@@ -36,12 +36,16 @@ Markdown文档转换的瑞士军刀。- 支持Markdown与DOCX/PDF/HTML/PPTX互�
 - Microsoft Word（用于DOCX转换）
 - Pandoc（[下载安装包](https://pandoc.org/installing.html)）
 - Tesseract OCR（用于PDF文字识别）
+- **draw.io桌面版**（用于Draw.io文件转换）- [下载地址](https://github.com/jgraph/drawio-desktop/releases)
 
 ### macOS
 ```bash
 # 使用 Homebrew 安装系统依赖
 brew install pandoc
 brew install tesseract
+
+# 安装draw.io桌面版
+brew install --cask drawio
 ```
 - Python 3.8 或更高版本
 - LibreOffice（用于DOCX转换）
@@ -51,6 +55,13 @@ brew install tesseract
 - LibreOffice
 - Pandoc
 - Tesseract OCR
+- **draw.io桌面版** - 从 [GitHub Releases](https://github.com/jgraph/drawio-desktop/releases) 下载对应的 `.deb` 或 `.rpm` 包安装
+
+### 图表转换工具（可选）
+为了获得最佳的图表转换体验，建议安装以下工具：
+- **Mermaid CLI**: `npm install -g @mermaid-js/mermaid-cli` （用于Mermaid图表）
+- **PlantUML**: 已内置支持，无需额外安装
+- **Java运行环境**: 用于SVG转换（项目内置Batik转换器）
 
 ## 🛠️ 安装
 
