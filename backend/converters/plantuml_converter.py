@@ -140,8 +140,18 @@ class PlantUMLConverter(BaseConverter):
             
             self.logger.info(f"开始转换PlantUML文件: {input_file} -> {output_file}")
             
+            # 预处理PlantUML文件，添加中文字体支持
+            preprocessed_file = self._preprocess_plantuml_file(file_path)
+            
             # 执行转换
-            success = self._execute_plantuml_command(str(input_file), str(output_file))
+            success = self._execute_plantuml_command(preprocessed_file, str(output_file))
+            
+            # 清理临时文件
+            if preprocessed_file != file_path:
+                try:
+                    os.remove(preprocessed_file)
+                except:
+                    pass
             
             if success:
                 # 验证并修复输出文件名
@@ -493,6 +503,83 @@ class PlantUMLConverter(BaseConverter):
             return possible_matches[0]
         
         return None
+    
+    def _preprocess_plantuml_file(self, file_path: str) -> str:
+        """
+        预处理PlantUML文件，添加中文字体支持
+        
+        Args:
+            file_path: 原始PlantUML文件路径
+            
+        Returns:
+            str: 预处理后的文件路径（如果不需要预处理则返回原路径）
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # 检查是否已经包含字体配置
+            has_font_config = any(keyword in content for keyword in [
+                'skinparam defaultFontName', 
+                'skinparam defaultFontSize',
+                'skinparam sequence',
+                '!define FONTFAMILY'
+            ])
+            
+            # 检查是否包含中文
+            has_chinese = re.search(r'[\u4e00-\u9fff]', content)
+            
+            # 如果包含中文但没有字体配置，则添加中文字体支持
+            if has_chinese and not has_font_config:
+                self.logger.info(f"检测到中文内容，添加中文字体支持: {file_path}")
+                
+                # 创建临时文件
+                temp_dir = tempfile.gettempdir()
+                temp_file = os.path.join(temp_dir, f"plantuml_preprocessed_{os.path.basename(file_path)}")
+                
+                # 构建预处理内容
+                preprocessed_content = self._build_preprocessed_content(content)
+                
+                # 写入临时文件
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    f.write(preprocessed_content)
+                
+                return temp_file
+            else:
+                # 不需要预处理，返回原文件
+                return file_path
+                
+        except Exception as e:
+            self.logger.warning(f"预处理PlantUML文件失败，使用原文件: {e}")
+            return file_path
+    
+    def _build_preprocessed_content(self, original_content: str) -> str:
+        """
+        构建预处理后的PlantUML内容，添加中文字体支持
+        
+        Args:
+            original_content: 原始PlantUML内容
+            
+        Returns:
+            str: 预处理后的内容
+        """
+        # 中文字体配置 - 只插入这两句
+        chinese_font_config = """skinparam defaultFontName "Microsoft YaHei"
+skinparam defaultFontSize 12"""
+        
+        # 在!theme plain后插入字体配置
+        lines = original_content.split('\n')
+        processed_lines = []
+        config_inserted = False
+        
+        for line in lines:
+            processed_lines.append(line)
+            if line.strip().startswith('!theme plain') and not config_inserted:
+                # 在!theme plain行之后插入字体配置
+                processed_lines.append(chinese_font_config)
+                config_inserted = True
+        
+        return '\n'.join(processed_lines)
     
     def _parse_plantuml_error(self, error_output: str) -> str:
         """
