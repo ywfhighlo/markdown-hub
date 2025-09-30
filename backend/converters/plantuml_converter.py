@@ -143,11 +143,18 @@ class PlantUMLConverter(BaseConverter):
             # 执行转换
             success = self._execute_plantuml_command(str(input_file), str(output_file))
             
-            if success and output_file.exists():
-                self.logger.info(f"PlantUML转换成功: {output_file}")
-                return str(output_file)
+            if success:
+                # 验证并修复输出文件名
+                actual_output_file = self._verify_and_fix_output_filename(input_file, output_file)
+                
+                if actual_output_file and actual_output_file.exists():
+                    self.logger.info(f"PlantUML转换成功: {actual_output_file}")
+                    return str(actual_output_file)
+                else:
+                    self.logger.error(f"PlantUML转换后未找到输出文件: {input_file}")
+                    return None
             else:
-                self.logger.error(f"PlantUML转换失败: {input_file}, success={success}, file_exists={output_file.exists()}")
+                self.logger.error(f"PlantUML转换失败: {input_file}")
                 return None
                 
         except Exception as e:
@@ -388,6 +395,14 @@ class PlantUMLConverter(BaseConverter):
         if self.plantuml_config.graphviz_dot_path:
             command.extend(['-graphvizdot', self.plantuml_config.graphviz_dot_path])
         
+        # 强制指定输出文件名，防止PlantUML使用@startuml后的标题作为文件名
+        # 获取期望的输出文件名（不含路径）
+        expected_filename = os.path.basename(output_file)
+        expected_basename = os.path.splitext(expected_filename)[0]
+        
+        # 使用-filename参数强制指定输出文件名
+        command.extend(['-filename', expected_basename])
+        
         # 输出目录 (使用引号包围路径以处理空格)
         output_dir = os.path.dirname(output_file)
         if ' ' in output_dir:
@@ -402,6 +417,82 @@ class PlantUMLConverter(BaseConverter):
             command.append(input_file)
         
         return command
+    
+    def _verify_and_fix_output_filename(self, input_file: Path, expected_output_file: Path) -> Optional[Path]:
+        """
+        验证并修复输出文件名
+        
+        PlantUML可能会根据@startuml后的标题生成不同的文件名，
+        此方法会查找实际生成的文件并重命名为期望的文件名
+        
+        Args:
+            input_file: 输入PlantUML文件路径
+            expected_output_file: 期望的输出文件路径
+            
+        Returns:
+            Optional[Path]: 实际的输出文件路径，失败返回None
+        """
+        output_dir = expected_output_file.parent
+        expected_filename = expected_output_file.name
+        
+        # 如果期望的文件已经存在，直接返回
+        if expected_output_file.exists():
+            self.logger.debug(f"输出文件名正确: {expected_output_file}")
+            return expected_output_file
+        
+        # 查找输出目录中所有PNG文件
+        png_files = list(output_dir.glob("*.png"))
+        
+        if not png_files:
+            self.logger.error(f"输出目录中未找到任何PNG文件: {output_dir}")
+            return None
+        
+        # 按修改时间排序，最新的文件可能是刚生成的
+        png_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        # 尝试找到可能的输出文件
+        input_basename = input_file.stem
+        possible_matches = []
+        
+        for png_file in png_files:
+            png_basename = png_file.stem
+            
+            # 检查是否是刚刚生成的文件（时间戳在最近几秒内）
+            file_age = time.time() - png_file.stat().st_mtime
+            if file_age > 10:  # 超过10秒的文件可能不是刚生成的
+                continue
+                
+            # 如果文件名完全匹配输入文件名，这是最理想的情况
+            if png_basename == input_basename:
+                possible_matches.insert(0, png_file)  # 插入到最前面
+            else:
+                possible_matches.append(png_file)
+        
+        if not possible_matches:
+            # 如果没有找到最近的文件，尝试所有PNG文件
+            self.logger.warning(f"未找到最近生成的PNG文件，尝试所有PNG文件")
+            possible_matches = png_files[:3]  # 只检查最新的3个文件
+        
+        # 尝试重命名找到的文件
+        for candidate_file in possible_matches:
+            try:
+                if candidate_file.name != expected_filename:
+                    self.logger.info(f"重命名输出文件: {candidate_file.name} -> {expected_filename}")
+                    candidate_file.rename(expected_output_file)
+                    return expected_output_file
+                else:
+                    return candidate_file
+                    
+            except Exception as e:
+                self.logger.warning(f"重命名文件失败: {candidate_file} -> {expected_output_file}, 错误: {e}")
+                continue
+        
+        # 如果重命名失败，返回找到的第一个文件
+        if possible_matches:
+            self.logger.warning(f"使用原始文件名: {possible_matches[0]}")
+            return possible_matches[0]
+        
+        return None
     
     def _parse_plantuml_error(self, error_output: str) -> str:
         """
