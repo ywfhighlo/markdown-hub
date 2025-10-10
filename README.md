@@ -61,7 +61,11 @@ brew install --cask drawio
 为了获得最佳的图表转换体验，建议安装以下工具：
 - **Mermaid CLI**: `npm install -g @mermaid-js/mermaid-cli` （用于Mermaid图表）
 - **PlantUML**: 已内置支持，无需额外安装
-- **Java运行环境**: 用于SVG转换（项目内置Batik转换器）
+- **Java运行环境**: 用于SVG转换和PlantUML图表生成（项目内置Batik转换器）
+  - **Windows**: 下载并安装 [Oracle JDK](https://www.oracle.com/java/technologies/downloads/) 或 [OpenJDK](https://adoptium.net/)
+  - **macOS**: `brew install openjdk` 或从官网下载安装包
+  - **Linux**: `sudo apt install openjdk-11-jdk` (Ubuntu/Debian) 或 `sudo yum install java-11-openjdk-devel` (CentOS/RHEL)
+  - 安装后请确保 `java` 命令在系统PATH中可用
 
 ## 🛠️ 安装
 
