@@ -5,9 +5,9 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 ## [0.3.5] - 2025-9-30
 
 ### Fixed
-- 明确指定运输出文件名，防止PlantUML使用@startuml的标题作为文件名
+- 明确指定输出文件名，防止PlantUML使用@startuml的标题作为文件名
 - 增加svg预处理，修复不兼容的svg2.0语法
-- 启用Docx模板，但是用户指定模板文件时，使用默认模板
+- 启用Docx模板，但是用户未指定模板文件时，使用默认模板
 
 ## [0.3.4] - 2025-9-29
 
