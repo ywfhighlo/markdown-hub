@@ -1165,31 +1165,19 @@ class MdToOfficeConverter(BaseConverter):
         # SVG处理 - 使用Batik转换器
         try:
             self.logger.info(f"开始SVG处理，输出格式: {self.output_format}")
-            
+
             # 所有格式都使用Batik转换器
             md_filename = Path(md_file_path).stem
             # 简化处理，直接使用原始内容
             processed_content = content
             svg_temp_files = []
-            
+
             self.logger.info(f"SVG处理完成，使用Batik转换器")
         except Exception as e:
             self.logger.error(f"SVG处理失败: {e}")
+            # SVG处理失败不影响其他功能，继续执行
             processed_content = content
             svg_temp_files = []
-            stats = converter.get_conversion_statistics()
-            if stats['svg_converted'] > 0:
-                self.logger.info(f"SVG处理完成，转换了 {stats['svg_converted']} 个SVG块")
-                self.logger.info(f"成功: {stats['svg_converted']}, 失败: {stats['conversion_failed']}")
-                
-                # 获取生成的文件列表
-                if 'converted_files' in conversion_info:
-                    temp_files.extend(conversion_info['converted_files'])
-                if 'files_created' in stats:
-                    temp_files.extend(stats['files_created'])
-        except Exception as e:
-            self.logger.error(f"SVG处理失败: {e}")
-            # SVG处理失败不影响其他功能，继续执行
 
         # PlantUML文件链接处理
         try:
@@ -1220,6 +1208,22 @@ class MdToOfficeConverter(BaseConverter):
         # 确保列表前有空行，以便Pandoc正确识别
         content = self._ensure_list_spacing(content)
         
+        
+        # ============================================
+        # 增强Markdown语法支持
+        # 1. 数学公式 ($...$, $$...$$)
+        # 2. 任务列表 (- [ ], - [x])
+        # 3. 脚注 ([^1])
+        # 4. 定义列表 (术语: 定义)
+        # 5. 缩写词 (<abbr>)
+        # ============================================
+        try:
+            self.logger.info("开始增强Markdown语法支持...")
+            content = self._process_enhanced_markdown(content)
+            self.logger.info("Markdown语法增强处理完成")
+        except Exception as e:
+            self.logger.warning(f"Markdown语法增强处理失败: {e}")
+            # 不抛出错误，继续执行转换
         # 表格列宽优化处理
         content = self._optimize_table_column_widths(content)
 
@@ -1306,17 +1310,272 @@ class MdToOfficeConverter(BaseConverter):
         except Exception as e:
             self.logger.warning(f"Batik转换器临时文件清理失败: {e}")
 
+    def _process_enhanced_markdown(self, content: str) -> str:
+        """
+        增强Markdown语法支持的主入口
+        处理以下语法：
+        - 数学公式 ($...$, $$...$$, \[...\], \\begin{equation}...\\end{equation})
+        - 任务列表 (- [ ], - [x])
+        - 脚注 ([^1])
+        - 定义列表 (术语: 定义)
+        - 缩写词 (<abbr>)
+        - 代码高亮（```language...```, `code`）
+        - 删除线 (~~text~~)
+        - 上下标 (^上标^, ~下标~)
+        - 水平线 (---, ***, ___)
+        - 键盘按键 (<kbd>key</kbd>)
+        """
+
+        # 1. 处理数学公式
+        content = self._process_math_expressions(content)
+
+        # 2. 处理任务列表
+        content = self._process_task_lists(content)
+
+        # 3. 处理脚注
+        content = self._process_footnotes(content)
+
+        # 4. 处理定义列表
+        content = self._process_definition_lists(content)
+
+        # 5. 处理缩写词
+        content = self._process_abbreviations(content)
+
+        # 6. 处理代码高亮
+        content = self._process_code_highlighting(content)
+
+        # 7. 处理删除线
+        content = self._process_strikethrough(content)
+
+        # 8. 处理上下标
+        content = self._process_superscript_subscript(content)
+
+        # 9. 处理键盘按键
+        content = self._process_keyboard_keys(content)
+
+        # 10. 处理水平线（增强版）
+        content = self._process_horizontal_rules(content)
+
+        return content
+    
+    def _process_math_expressions(self, content: str) -> str:
+        """处理数学公式支持，支持更多LaTeX格式"""
+
+        # 处理块级公式 $$...$$ 或 \[...\] 或 \begin{equation}...\end{equation}
+        def replace_block_math(match):
+            math_content = match.group(1).strip()
+            # 将公式转换为带标签的格式，便于Pandoc识别
+            return f"\n\n<div class=\"math-block\">[公式块] {math_content}</div>\n\n"
+
+        # 匹配 $$...$$ (支持跨行)
+        content = re.sub(r'\$\$\s*(.*?)\s*\$\$', replace_block_math, content, flags=re.DOTALL)
+
+        # 匹配 \[...\] 块级公式
+        content = re.sub(r'\\\[\s*(.*?)\s*\\]', replace_block_math, content, flags=re.DOTALL)
+
+        # 匹配 \begin{equation}...\end{equation} 环境
+        def replace_equation_env(match):
+            math_content = match.group(1).strip()
+            # 提取标签（如果有）
+            label_match = re.search(r'\\label\{([^}]+)\}', math_content)
+            label = f" (公式编号: {label_match.group(1)})" if label_match else ""
+            # 移除label，只保留公式内容
+            math_content = re.sub(r'\\label\{[^}]+\}', '', math_content).strip()
+            return f"\n\n<div class=\"math-block\">[公式环境{label}] {math_content}</div>\n\n"
+
+        content = re.sub(
+            r'\\begin\{equation\}\s*(.*?)\s*\\end\{equation\}',
+            replace_equation_env,
+            content,
+            flags=re.DOTALL
+        )
+
+        # 匹配 \begin{align}...\end{align} 环境（多行对齐）
+        def replace_align_env(match):
+            math_content = match.group(1).strip()
+            # 处理换行和行号标记 \\
+            math_content = re.sub(r'\\\\', '\n', math_content)
+            return f"\n\n<div class=\"math-block\">[多行公式] {math_content}</div>\n\n"
+
+        content = re.sub(
+            r'\\begin\{align(?:ed|at|gather)\*?\}\s*(.*?)\s*\\end\{align(?:ed|at|gather)\*?\}',
+            replace_align_env,
+            content,
+            flags=re.DOTALL
+        )
+
+        # 处理行内公式 $...$ 或 \(...\)
+
+        def replace_inline_math(match):
+            math_content = match.group(1).strip()
+            return f" [公式: {math_content}] "
+
+        # 匹配 $...$
+        content = re.sub(r'\$(.*?)\$', replace_inline_math, content, flags=re.DOTALL)
+
+        # 匹配 \(...\)
+        content = re.sub(r'\\\(\s*(.*?)\s*\\\)', replace_inline_math, content, flags=re.DOTALL)
+
+        # 处理常见的LaTeX数学符号和命令
+        # 将常见的数学命令转换为更易读的格式
+
+        # 处理分数 \frac{num}{den}
+        content = re.sub(
+            r'\\frac\{([^}]+)\}\{([^}]+)\}',
+            r'(\1)/(\2)',
+            content
+        )
+
+        # 处理上标 ^...
+        content = re.sub(
+            r'\^\{?([^}\s]+)\}?',
+            r'^\1',
+            content
+        )
+
+        # 处理下标 _...
+        content = re.sub(
+            r'_\{?([^}\s]+)\}?',
+            r'_\1',
+            content
+        )
+
+        # 处理希腊字母（常见的）
+        greek_map = {
+            r'\\alpha': 'α', r'\\beta': 'β', r'\\gamma': 'γ', r'\\delta': 'δ',
+            r'\\epsilon': 'ε', r'\\zeta': 'ζ', r'\\eta': 'η', r'\\theta': 'θ',
+            r'\\lambda': 'λ', r'\\mu': 'μ', r'\\pi': 'π', r'\\rho': 'ρ',
+            r'\\sigma': 'σ', r'\\tau': 'τ', r'\\phi': 'φ', r'\\psi': 'ψ',
+            r'\\omega': 'ω', r'\\Gamma': 'Γ', r'\\Delta': 'Δ', r'\\Theta': 'Θ',
+            r'\\Lambda': 'Λ', r'\\Xi': 'Ξ', r'\\Pi': 'Π', r'\\Sigma': 'Σ',
+            r'\\Upsilon': 'Υ', r'\\Phi': 'Φ', r'\\Psi': 'Ψ', r'\\Omega': 'Ω'
+        }
+
+        for latex, greek in greek_map.items():
+            content = content.replace(latex, greek)
+
+        # 处理数学运算符
+        math_ops = {
+            r'\\times': '×', r'\\div': '÷', r'\\pm': '±', r'\\mp': '∓',
+            r'\\le': '≤', r'\\ge': '≥', r'\\neq': '≠', r'\\approx': '≈',
+            r'\\equiv': '≡', r'\\infty': '∞', r'\\partial': '∂',
+            r'\\nabla': '∇', r'\\sum': '∑', r'\\prod': '∏', r'\\int': '∫',
+            r'\\sqrt': '√', r'\\overline': '¯', r'\\vec': '→',
+            r'\\hat': '^', r'\\bar': '¯', r'\\dot': '˙', r'\\ddot': '¨'
+        }
+
+        for latex, symbol in math_ops.items():
+            content = content.replace(latex, symbol)
+
+        # 处理逻辑符号
+        logic_ops = {
+            r'\\forall': '∀', r'\\exists': '∃', r'\\rightarrow': '→',
+            r'\\leftarrow': '←', r'\\leftrightarrow': '↔', r'\\Rightarrow': '⇒',
+            r'\\Leftarrow': '⇐', r'\\Leftrightarrow': '⇔', r'\\land': '∧',
+            r'\\lor': '∨', r'\\lnot': '¬', r'\\oplus': '⊕', r'\\otimes': '⊗'
+        }
+
+        for latex, symbol in logic_ops.items():
+            content = content.replace(latex, symbol)
+
+        # 处理集合符号
+        set_ops = {
+            r'\\in': '∈', r'\\notin': '∉', r'\\ni': '∋', r'\\subset': '⊂',
+            r'\\subseteq': '⊆', r'\\cup': '∪', r'\\cap': '∩', r'\\emptyset': '∅',
+            r'\\mathbb\{N\}': 'ℕ', r'\\mathbb\{Z\}': 'ℤ', r'\\mathbb\{Q\}': 'ℚ',
+            r'\\mathbb\{R\}': 'ℝ', r'\\mathbb\{C\}': 'ℂ'
+        }
+
+        for latex, symbol in set_ops.items():
+            content = content.replace(latex, symbol)
+
+        return content
+    
+    def _process_task_lists(self, content: str) -> str:
+        """处理任务列表支持"""
+        
+        # 匹配任务列表项，保留原始格式
+        content = re.sub(
+            r'-\s*\[\s*([ xX]?)\s*\]\s*(.+?)(?=\n|$)', 
+            lambda m: f"- [{m.group(1).upper() if m.group(1).upper() == 'X' else ' '}] {m.group(2)}", 
+            content, 
+            flags=re.MULTILINE
+        )
+        
+        return content
+    
+    def _process_footnotes(self, content: str) -> str:
+        """处理脚注支持"""
+        
+        # 收集所有脚注定义
+        footnote_pattern = r'\[\^([^\]]+)\]:\s*(.+?)(?=\n\[\^|\n\n|\Z)'
+        footnotes = {}
+        
+        def save_footnote(match):
+            footnote_id = match.group(1)
+            footnote_text = match.group(2).strip()
+            footnotes[footnote_id] = footnote_text
+            return ""  # 移除定义行
+        
+        # 提取所有脚注定义
+        content = re.sub(footnote_pattern, save_footnote, content, flags=re.DOTALL)
+        
+        # 在文档末尾添加脚注部分
+        if footnotes:
+            content += "\n\n## 脚注\n\n"
+            for footnote_id, footnote_text in footnotes.items():
+                content += f"[^{footnote_id}] {footnote_text}\n\n"
+        
+        return content
+    
+    def _process_definition_lists(self, content: str) -> str:
+        """处理定义列表支持"""
+        
+        # 匹配多行定义格式（术语换行后跟: 定义）
+        def replace_multiline_def(match):
+            term = match.group(1).strip()
+            definition = match.group(2).strip()
+            return f"- **{term}**: {definition}\n"
+        
+        # 匹配同一行定义格式（术语: 定义）
+        content = re.sub(
+            r'^([^:\n]+):\s*(.+)$', 
+            r'- **\1**: \2', 
+            content, 
+            flags=re.MULTILINE
+        )
+        
+        return content
+    
+    def _process_abbreviations(self, content: str) -> str:
+        """处理缩写词支持"""
+        
+        # 匹配HTML缩写标签
+        def replace_abbr(match):
+            abbr_text = match.group(2).strip()
+            full_form = match.group(1).strip()
+            return f"{abbr_text} ({full_form})"
+        
+        content = re.sub(
+            r'<abbr[^>]*title=["\']([^"\']+)["\'][^>]*>([^<]+)</abbr>', 
+            replace_abbr, 
+            content, 
+            flags=re.IGNORECASE
+        )
+        
+        return content
+
     def _convert_to_docx(self, input_file: str, to_pdf: bool = False) -> Optional[str]:
         """Converts a Markdown file to DOCX using a unified pandoc approach."""
         input_path = Path(input_file)
-        
+
         processed_content, temp_images = self._preprocess_markdown(input_file)
         if processed_content is None:
             return None
 
         processed_md_file = input_path.with_name(f"{input_path.stem}_processed_{os.getpid()}.md")
         processed_md_file.write_text(processed_content, encoding='utf-8')
-        
+
         all_temp_files = temp_images + [str(processed_md_file)]
 
         try:
@@ -1326,11 +1585,11 @@ class MdToOfficeConverter(BaseConverter):
 
             # Decide whether to use the advanced template feature
             use_advanced_template = (
-                self.template_path and 
-                Path(self.template_path).exists() and 
+                self.template_path and
+                Path(self.template_path).exists() and
                 WIN32COM_AVAILABLE
             )
-            
+
             # 记录模板使用状态
             if self.template_path:
                 if Path(self.template_path).exists():
@@ -2300,9 +2559,112 @@ class MdToOfficeConverter(BaseConverter):
                 self.logger.info(f"优化了 {table_count} 个表格的列宽分配")
             
             return optimized_content
-            
+
         except Exception as e:
             self.logger.warning(f"表格列宽优化失败: {e}")
             return content
-    
+
+    def _process_code_highlighting(self, content: str) -> str:
+        """
+        处理代码高亮语法：
+        - 块级代码块：```language
+        - 行内代码：`code`
+        """
+        # 处理行内代码 `code`
+        def replace_inline_code(match):
+            code_content = match.group(1)
+            # 转义特殊字符，但保留基本的格式化
+            code_content = code_content.replace('*', '\\*').replace('_', '\\_')
+            return f"`{code_content}`"
+
+        # 先处理行内代码，避免与块级代码冲突
+        content = re.sub(r'`([^`]+)`', replace_inline_code, content)
+
+        # 处理带语言标注的块级代码块
+        def replace_code_block(match):
+            language = match.group(1).strip() if match.group(1) else ''
+            code_content = match.group(2)
+            # 转义特殊字符
+            code_content = code_content.replace('<', '&lt;').replace('>', '&gt;')
+
+            # 如果指定了语言，添加语言标识
+            if language:
+                return f"\n\n**[{language}代码块]**\n\n```\n{code_content}\n```\n\n"
+            else:
+                return f"\n\n**代码块**\n\n```\n{code_content}\n```\n\n"
+
+        # 匹配 ```language 或 ```
+        content = re.sub(
+            r'```(\w+)?\n(.*?)\n```',
+            replace_code_block,
+            content,
+            flags=re.DOTALL
+        )
+
+        return content
+
+    def _process_strikethrough(self, content: str) -> str:
+        """处理删除线语法：~~text~~"""
+
+        # 处理删除线 ~~text~~
+        def replace_strikethrough(match):
+            text = match.group(1)
+            return f"[删除线: {text}]"
+
+        content = re.sub(r'~~(.+?)~~', replace_strikethrough, content)
+
+        return content
+
+    def _process_superscript_subscript(self, content: str) -> str:
+        """处理上下标语法：^上标^ 和 ~下标~"""
+
+        # 处理上标 ^text^
+        def replace_superscript(match):
+            text = match.group(1)
+            return f"^{text}^"
+
+        content = re.sub(r'\^([^^]+)\^', replace_superscript, content)
+
+        # 处理下标 ~text~
+        def replace_subscript(match):
+            text = match.group(1)
+            return f"~{text}~"
+
+        content = re.sub(r'~([^~]+)~', replace_subscript, content)
+
+        return content
+
+    def _process_keyboard_keys(self, content: str) -> str:
+        """处理键盘按键语法：<kbd>key</kbd>"""
+
+        # 处理 <kbd>key</kbd> 标签
+        def replace_keyboard_key(match):
+            key = match.group(1).strip()
+            return f"[{key}]"
+
+        content = re.sub(r'<kbd>([^<]+)</kbd>', replace_keyboard_key, content)
+
+        return content
+
+    def _process_horizontal_rules(self, content: str) -> str:
+        """
+        增强水平线处理：
+        支持 ---, ***, ___, * * *, - - -, _ _ _
+        """
+
+        # 匹配各种水平线格式
+        horizontal_rule_pattern = re.compile(
+            r'^(\s*)(-\s*-\s*-|\*\s*\*\s*\*|_\s*_\s_*)\s*$',
+            re.MULTILINE
+        )
+
+        def replace_hr(match):
+            indent = match.group(1)
+            hr_chars = match.group(2).strip()[0]  # 获取第一个字符 (-, *, 或 _)
+            return f"{indent}***\n"
+
+        content = horizontal_rule_pattern.sub(replace_hr, content)
+
+        return content
+
  
