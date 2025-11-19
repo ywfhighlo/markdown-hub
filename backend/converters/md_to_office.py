@@ -1202,6 +1202,9 @@ class MdToOfficeConverter(BaseConverter):
                     return f"```mermaid\n{code}\n```"
             content = re.sub(r'```mermaid\n(.*?)\n```', replace_mermaid, content, flags=re.DOTALL)
 
+        # 新增：将<br>替换为10个空格
+        content = content.replace('<br>', '          ')
+
         # 非标准无序列表格式处理 - 将 • 转换为标准的 - 格式
         content = self._normalize_unordered_lists(content)
         
