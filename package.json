@@ -91,6 +91,10 @@
       {
         "command": "markdown-hub.batchDiagramToPng",
         "title": "图表批量转PNG"
+      },
+      {
+        "command": "markdown-hub.batchPdfToPng",
+        "title": "单页PDF批量转PNG"
       }
     ],
     "menus": {
@@ -184,6 +188,11 @@
           "when": "explorerResourceIsFolder",
           "command": "markdown-hub.batchDiagramToPng",
           "group": "4_md_batch@4"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchPdfToPng",
+          "group": "4_md_batch@5"
         },
         {
           "when": "explorerResourceIsFolder",
