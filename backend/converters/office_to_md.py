@@ -207,7 +207,7 @@ class OfficeToMdConverter(BaseConverter):
     
     def _extract_text_from_pdf(self, pdf_path: Path) -> str:
         """
-        从PDF文件提取文本
+        从PDF文件提取文本和图片
         迁移自 tools/office_to_md.py
         
         Args:
@@ -221,12 +221,21 @@ class OfficeToMdConverter(BaseConverter):
             return "## PDF内容提取失败\n\n需安装PDF处理库: pip install pypdf pytesseract pdf2image"
             
         try:
+            # 创建图片输出目录
+            assets_dir_name = f"{pdf_path.stem}_assets"
+            assets_dir = Path(self.output_dir) / assets_dir_name
+            assets_dir_created = False
+
             # 首先尝试直接提取文本
             reader = pypdf.PdfReader(pdf_path)
             text = ""
+            extracted_images_md = ""
             
-            for page in reader.pages:
+            for i, page in enumerate(reader.pages):
+                # 提取文本
                 page_text = page.extract_text()
+                has_figure = False
+                
                 if page_text.strip():
                     # 清理页面文本中的编码问题
                     try:
@@ -241,10 +250,129 @@ class OfficeToMdConverter(BaseConverter):
                     
                     text += page_text + "\n\n"
                     
+                    # 检查是否包含"Figure X:"或"图 X"格式的图注
+                    # 避免误判文中引用的"see Figure 1" 或 "如图1所示"
+                    # 匹配模式：
+                    # 1. Figure 1: / Figure 1. (英文，必须带标点)
+                    # 2. 图1 / 图 1 (中文，排除前面有"如/见/看"的情况)
+                    if re.search(r'(Figure\s+\d+[:.])|(?<![如见看])(图\s*\d+)', page_text):
+                        has_figure = True
+                
+                # 提取嵌入图片 (Raster Images)
+                try:
+                    if hasattr(page, 'images') and page.images:
+                        if not assets_dir_created:
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+                            assets_dir_created = True
+                            
+                        for image_file in page.images:
+                            # 0. 文件大小过滤 (小于10KB)
+                            if len(image_file.data) < 10 * 1024:
+                                self.logger.info(f"忽略过小PDF图片: {image_file.name} ({len(image_file.data)} bytes)")
+                                continue
+
+                            # 1. 尺寸过滤 (使用PIL)
+                            try:
+                                from PIL import Image
+                                import io
+                                
+                                should_skip = False
+                                with Image.open(io.BytesIO(image_file.data)) as img:
+                                    width, height = img.size
+                                    
+                                    # 启发式规则：过滤小图片和Banner
+                                    if width < 50 or height < 50:
+                                        self.logger.info(f"忽略小PDF图片: {image_file.name} ({width}x{height})")
+                                        should_skip = True
+                                    elif height < 200 and (width / height) > 3.0:
+                                        self.logger.info(f"忽略Banner PDF图片(Type A): {image_file.name} ({width}x{height})")
+                                        should_skip = True
+                                    elif height < 120 and (width / height) > 1.5:
+                                        self.logger.info(f"忽略Logo PDF图片(Type B): {image_file.name} ({width}x{height})")
+                                        should_skip = True
+                                
+                                if should_skip:
+                                    continue
+                            except ImportError:
+                                pass
+                            except Exception as e:
+                                self.logger.warning(f"检查PDF图片 {image_file.name} 出错: {e}")
+
+                            image_name = image_file.name
+                            # 防止文件名重复，添加页面前缀
+                            image_filename = f"page_{i+1}_{image_name}"
+                            image_path = assets_dir / image_filename
+                            
+                            with open(image_path, "wb") as fp:
+                                fp.write(image_file.data)
+                            
+                            # 添加图片链接到Markdown
+                            # 使用相对路径
+                            relative_path = f"{assets_dir_name}/{image_filename}"
+                            extracted_images_md += f"\n![{image_name}]({relative_path})\n\n"
+                            self.logger.info(f"提取图片: {image_filename}")
+                except Exception as img_e:
+                    self.logger.warning(f"提取第 {i+1} 页图片时出错: {img_e}")
+                
+                # 如果检测到Figure关键字，渲染整页为图片以捕获矢量图
+                if has_figure:
+                    try:
+                        self.logger.info(f"第 {i+1} 页包含Figure，尝试渲染页面快照...")
+                        if not assets_dir_created:
+                            assets_dir.mkdir(parents=True, exist_ok=True)
+                            assets_dir_created = True
+                        
+                        # 尝试使用pdf2image渲染单页
+                        page_images = convert_from_path(
+                            pdf_path, 
+                            first_page=i+1, 
+                            last_page=i+1,
+                            poppler_path=self.poppler_path
+                        )
+                        
+                        if page_images:
+                            render_filename = f"page_{i+1}_render.jpg"
+                            render_path = assets_dir / render_filename
+                            # 保存为JPEG以节省空间
+                            page_images[0].save(render_path, "JPEG", quality=85)
+                            
+                            relative_path = f"{assets_dir_name}/{render_filename}"
+                            extracted_images_md += f"\n> **Page {i+1} Snapshot (Contains Figure)**\n\n![Page {i+1} Render]({relative_path})\n\n"
+                            
+                    except Exception as render_e:
+                        self.logger.warning(f"渲染第 {i+1} 页失败 (可能是Poppler未安装): {render_e}")
+                        # Fallback: 提取该页为单独的PDF文件
+                        try:
+                            self.logger.info(f"正在提取第 {i+1} 页为单独PDF...")
+                            writer = pypdf.PdfWriter()
+                            writer.add_page(page) # 使用当前的page对象
+                            
+                            pdf_filename = f"page_{i+1}_figure.pdf"
+                            pdf_out_path = assets_dir / pdf_filename
+                            
+                            with open(pdf_out_path, "wb") as f:
+                                writer.write(f)
+                            
+                            relative_path = f"{assets_dir_name}/{pdf_filename}"
+                            # 添加PDF链接
+                            extracted_images_md += f"\n> **Page {i+1} Diagram (Vector Source)**\n\n[View Page {i+1} Diagram (PDF)]({relative_path})\n\n"
+                            
+                        except Exception as extract_e:
+                            self.logger.error(f"提取PDF页面失败: {extract_e}")
+                    
+            # 如果提取的文本太少,可能是扫描版PDF,使用OCR
+                    
             # 如果提取的文本太少,可能是扫描版PDF,使用OCR
             if len(text.strip()) < 100:
                 self.logger.info(f"{pdf_path.name} 可能是扫描版PDF,尝试使用OCR...")
-                text = self._ocr_pdf(pdf_path)
+                ocr_text = self._ocr_pdf(pdf_path)
+                # 如果OCR成功提取了内容，则使用OCR内容
+                if len(ocr_text.strip()) > len(text.strip()):
+                    text = ocr_text
+            
+            # 将提取的图片添加到文末 (或者根据页码穿插，但这里简化处理)
+            if extracted_images_md:
+                text += "\n\n## 提取的图片\n\n" + extracted_images_md
                 
             return text
             
