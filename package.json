@@ -23,7 +23,10 @@
     "onCommand:markdown-hub.mdToHtml",
     "onCommand:markdown-hub.officeToMd",
     "onCommand:markdown-hub.diagramToPng",
-    "onCommand:markdown-hub.openTemplateSettings"
+    "onCommand:markdown-hub.openTemplateSettings",
+    "onCommand:markdown-hub.checkDependencies",
+    "onCommand:markdown-hub.viewHistory",
+    "onCommand:markdown-hub.clearHistory"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -95,6 +98,18 @@
       {
         "command": "markdown-hub.batchPdfToPng",
         "title": "单页PDF批量转PNG"
+      },
+      {
+        "command": "markdown-hub.checkDependencies",
+        "title": "Markdown Hub: Check Dependencies"
+      },
+      {
+        "command": "markdown-hub.viewHistory",
+        "title": "Markdown Hub: View History"
+      },
+      {
+        "command": "markdown-hub.clearHistory",
+        "title": "Markdown Hub: Clear History"
       }
     ],
     "menus": {
@@ -218,6 +233,21 @@
           "when": "explorerResourceIsFolder",
           "command": "markdown-hub.batchAllToMd",
           "group": "3_batch@5"
+        },
+        {
+          "when": "view == markdownHubView",
+          "command": "markdown-hub.checkDependencies",
+          "group": "1_utility@1"
+        },
+        {
+          "when": "view == markdownHubView",
+          "command": "markdown-hub.viewHistory",
+          "group": "1_utility@2"
+        },
+        {
+          "when": "view == markdownHubView",
+          "command": "markdown-hub.clearHistory",
+          "group": "1_utility@3"
         }
       ]
     },

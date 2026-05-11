@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { handleConvertCommand, handleOpenTemplateSettingsCommand } from './commandHandler';
+import { handleConvertCommand, handleOpenTemplateSettingsCommand, handleViewHistoryCommand, handleClearHistoryCommand, handleCheckDependenciesCommand } from './commandHandler';
 
 // 批量转换处理函数 - 复用现有逻辑
 async function handleBatchConvert(uri: vscode.Uri, fileType: string, context: vscode.ExtensionContext) {
@@ -150,7 +150,16 @@ export function activate(context: vscode.ExtensionContext) {
             (uri: vscode.Uri) => handleConvertCommand(uri, 'diagram-to-png', context)),
             
         vscode.commands.registerCommand('markdown-hub.batchPdfToPng', 
-            (uri: vscode.Uri) => handleBatchPdfToPng(uri, context))
+            (uri: vscode.Uri) => handleBatchPdfToPng(uri, context)),
+
+        vscode.commands.registerCommand('markdown-hub.checkDependencies',
+            () => handleCheckDependenciesCommand()),
+
+        vscode.commands.registerCommand('markdown-hub.viewHistory',
+            () => handleViewHistoryCommand()),
+
+        vscode.commands.registerCommand('markdown-hub.clearHistory',
+            () => handleClearHistoryCommand())
     ];
     
     context.subscriptions.push(...disposables);
