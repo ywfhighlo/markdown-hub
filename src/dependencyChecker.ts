@@ -1,28 +1,25 @@
 import { execSync } from 'child_process';
 import * as vscode from 'vscode';
 
+// ─────────────────────────────────────────
+// 功能维度依赖矩阵
+// 每个功能独立检查，缺失只影响该功能，不波及其他
+// ─────────────────────────────────────────
+
+/** 单个功能维度的依赖状态 */
+export interface FeatureDependency {
+    name: string;               // 功能名（中文）
+    available: boolean;         // 是否可用
+    missingLibs: string[];      // 缺失的 Python 库
+    missingCmds: string[];      // 缺失的外部命令
+    installHint?: string;       // 一行安装提示
+}
+
+/** 全量依赖快照 */
 export interface DependencyStatus {
     python: boolean;
     pythonVersion?: string;
-    pandoc: boolean;
-    pandocVersion?: string;
-    tesseract: boolean;
-    tesseractVersion?: string;
-    java: boolean;
-    javaVersion?: string;
-    drawio: boolean;
-    drawioPath?: string;
-    mermaidCli: boolean;
-    pythonLibs: {
-        PyMuPDF: boolean;
-        pypdf: boolean;
-        pytesseract: boolean;
-        psutil: boolean;
-        docx2txt: boolean;
-        pandas: boolean;
-        pythonPptx: boolean;
-        html2text: boolean;
-    };
+    features: Record<string, FeatureDependency>;
 }
 
 export interface DependencyIssue {
@@ -31,6 +28,67 @@ export interface DependencyIssue {
     installCommand?: string;
     description: string;
 }
+
+// ─────────────────────────────────────────
+// 功能定义：每个功能需要哪些 Python 库和外部命令
+// ─────────────────────────────────────────
+
+interface FeatureDef {
+    name: string;
+    pythonLibs: string[];       // pip 包名（与 python -c "import xxx" 对应）
+    commands?: string[];        // 需要的外部命令
+    core?: boolean;             // 标记为核心功能（缺失时 severity=error）
+}
+
+const FEATURE_DEFS: Record<string, FeatureDef> = {
+    'pdf_to_md': {
+        name: 'PDF → Markdown',
+        pythonLibs: ['PyMuPDF'],   // 核心最小依赖；pypdf+pytesseract+pdf2image 为可选 OCR 回退
+        core: true,
+    },
+    'word_to_md': {
+        name: 'Word → Markdown',
+        pythonLibs: ['docx2txt'],
+    },
+    'excel_to_md': {
+        name: 'Excel → Markdown',
+        pythonLibs: ['pandas', 'tabulate', 'openpyxl'],
+    },
+    'pptx_to_md': {
+        name: 'PPTX → Markdown',
+        pythonLibs: ['python-pptx'],
+    },
+    'html_to_md': {
+        name: 'HTML → Markdown',
+        pythonLibs: ['html2text'],
+    },
+    'md_to_docx': {
+        name: 'Markdown → DOCX',
+        pythonLibs: ['python-docx', 'docxtpl', 'docxcompose', 'docx2txt'],
+        commands: ['pandoc'],
+    },
+    'md_to_pdf': {
+        name: 'Markdown → PDF',
+        pythonLibs: ['markdown'],
+        commands: ['pandoc'],
+    },
+    'md_to_html': {
+        name: 'Markdown → HTML',
+        pythonLibs: ['markdown'],
+    },
+    'md_to_pptx': {
+        name: 'Markdown → PPTX',
+        pythonLibs: ['python-pptx', 'Pillow'],
+    },
+    'diagram_to_png': {
+        name: '图表 → PNG',
+        pythonLibs: ['Pillow'],
+    },
+};
+
+// ─────────────────────────────────────────
+// 工具函数
+// ─────────────────────────────────────────
 
 function checkCommandExists(command: string): boolean {
     try {
@@ -59,46 +117,64 @@ function checkPythonLib(pythonCmd: string, libName: string): boolean {
     }
 }
 
+/** 按平台生成 pip install 命令 */
+function pipInstallCmd(libs: string[]): string {
+    return `pip install ${libs.join(' ')}`;
+}
+
+// ─────────────────────────────────────────
+// 主检查逻辑
+// ─────────────────────────────────────────
+
 export async function checkDependencies(): Promise<DependencyStatus> {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const pythonLibNames: Array<keyof DependencyStatus['pythonLibs']> = [
-        'PyMuPDF', 'pypdf', 'pytesseract', 'psutil',
-        'docx2txt', 'pandas', 'pythonPptx', 'html2text'
-    ];
-
-    const pythonLibs: DependencyStatus['pythonLibs'] = {} as any;
     const pythonAvailable = checkCommandExists(pythonCmd);
 
-    if (pythonAvailable) {
-        for (const lib of pythonLibNames) {
-            pythonLibs[lib] = checkPythonLib(pythonCmd, lib);
-        }
-    } else {
-        for (const lib of pythonLibNames) {
-            pythonLibs[lib] = false;
-        }
+    const features: Record<string, FeatureDependency> = {};
+
+    for (const [key, def] of Object.entries(FEATURE_DEFS)) {
+        const missingLibs = pythonAvailable
+            ? def.pythonLibs.filter(lib => !checkPythonLib(pythonCmd, lib))
+            : [...def.pythonLibs];
+
+        const missingCmds = (def.commands || []).filter(cmd => !checkCommandExists(cmd));
+
+        features[key] = {
+            name: def.name,
+            available: missingLibs.length === 0 && missingCmds.length === 0,
+            missingLibs,
+            missingCmds,
+            installHint: [
+                ...(missingLibs.length > 0 ? [pipInstallCmd(missingLibs)] : []),
+                ...(missingCmds.length > 0 ? [missingCmds.map(cmd => {
+                    switch (cmd) {
+                        case 'pandoc': return process.platform === 'darwin'
+                            ? 'brew install pandoc'
+                            : 'https://pandoc.org/installing.html';
+                        default: return cmd;
+                    }
+                }).join(', ')] : []),
+            ].join(' && ') || undefined,
+        };
     }
 
     return {
         python: pythonAvailable,
         pythonVersion: pythonAvailable ? getCommandVersion(pythonCmd, '--version') : undefined,
-        pandoc: checkCommandExists('pandoc'),
-        pandocVersion: getCommandVersion('pandoc', '--version'),
-        tesseract: checkCommandExists('tesseract'),
-        tesseractVersion: getCommandVersion('tesseract', '--version'),
-        java: checkCommandExists('java'),
-        javaVersion: getCommandVersion('java', '-version'),
-        drawio: checkCommandExists('drawio') || checkCommandExists('draw.io'),
-        mermaidCli: checkCommandExists('mmdc'),
-        pythonLibs
+        features,
     };
 }
+
+// ─────────────────────────────────────────
+// QuickPick 展示
+// ─────────────────────────────────────────
 
 export async function checkDependenciesWithQuickPick(): Promise<void> {
     const status = await checkDependencies();
     const issues: DependencyIssue[] = [];
     const okItems: string[] = [];
 
+    // Python 本身
     if (status.python) {
         okItems.push(`✅ Python: ${status.pythonVersion}`);
     } else {
@@ -106,97 +182,52 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
             name: 'Python',
             severity: 'error',
             installCommand: 'https://www.python.org/downloads/',
-            description: 'Python 环境未安装，这是核心依赖'
+            description: 'Python 环境未安装，所有功能不可用'
         });
     }
 
-    if (status.pandoc) {
-        okItems.push(`✅ Pandoc: ${status.pandocVersion}`);
-    } else {
-        issues.push({
-            name: 'Pandoc',
-            severity: 'error',
-            installCommand: process.platform === 'darwin' ? 'brew install pandoc' : 'https://pandoc.org/installing.html',
-            description: 'Pandoc 未安装，DOCX/PPTX 转换功能受限'
-        });
+    // 按功能维度逐一展示
+    for (const [key, feat] of Object.entries(status.features)) {
+        const def = FEATURE_DEFS[key];
+        if (feat.available) {
+            okItems.push(`✅ ${feat.name}`);
+        } else {
+            const parts: string[] = [];
+            if (feat.missingLibs.length > 0) {
+                parts.push(`Python库缺失: ${feat.missingLibs.join(', ')}`);
+            }
+            if (feat.missingCmds.length > 0) {
+                parts.push(`外部工具缺失: ${feat.missingCmds.join(', ')}`);
+            }
+
+            issues.push({
+                name: feat.name,
+                severity: def?.core ? 'error' : 'warning',
+                installCommand: feat.installHint,
+                description: parts.join('；'),
+            });
+        }
     }
 
-    if (status.tesseract) {
-        okItems.push(`✅ Tesseract OCR`);
-    } else {
-        issues.push({
-            name: 'Tesseract OCR',
-            severity: 'warning',
-            installCommand: process.platform === 'darwin' ? 'brew install tesseract' : 'https://github.com/UB-Mannheim/tesseract/wiki',
-            description: 'Tesseract 未安装，扫描版 PDF OCR 功能不可用'
-        });
-    }
+    // 可选的外部工具（图表相关，不属于某个特定转换功能）
+    const optionalTools: Array<{ name: string; cmd: string; hint: string }> = [
+        { name: 'Tesseract OCR', cmd: 'tesseract', hint: process.platform === 'darwin' ? 'brew install tesseract' : 'https://github.com/UB-Mannheim/tesseract/wiki' },
+        { name: 'Java', cmd: 'java', hint: process.platform === 'darwin' ? 'brew install openjdk' : 'https://adoptium.net/' },
+        { name: 'draw.io', cmd: 'drawio', hint: process.platform === 'darwin' ? 'brew install --cask drawio' : 'https://github.com/jgraph/drawio-desktop/releases' },
+        { name: 'Mermaid CLI', cmd: 'mmdc', hint: 'npm install -g @mermaid-js/mermaid-cli' },
+    ];
 
-    if (status.java) {
-        okItems.push(`✅ Java: ${status.javaVersion?.split('\n')[0]}`);
-    } else {
-        issues.push({
-            name: 'Java',
-            severity: 'warning',
-            installCommand: process.platform === 'darwin' ? 'brew install openjdk' : 'https://adoptium.net/',
-            description: 'Java 未安装，PlantUML/SVG 转换功能受限'
-        });
-    }
-
-    if (status.drawio) {
-        okItems.push(`✅ draw.io`);
-    } else {
-        issues.push({
-            name: 'draw.io',
-            severity: 'info',
-            installCommand: process.platform === 'darwin' ? 'brew install --cask drawio' : 'https://github.com/jgraph/drawio-desktop/releases',
-            description: 'draw.io 未安装，Draw.io 文件转换功能不可用'
-        });
-    }
-
-    if (status.mermaidCli) {
-        okItems.push(`✅ Mermaid CLI`);
-    } else {
-        issues.push({
-            name: 'Mermaid CLI',
-            severity: 'info',
-            installCommand: 'npm install -g @mermaid-js/mermaid-cli',
-            description: 'Mermaid CLI 未安装，Mermaid 图表转换功能不可用'
-        });
-    }
-
-    const libIssues = [];
-    if (!status.pythonLibs.PyMuPDF) {
-        libIssues.push('PyMuPDF');
-    }
-    if (!status.pythonLibs.pypdf) {
-        libIssues.push('pypdf');
-    }
-    if (!status.pythonLibs.psutil) {
-        libIssues.push('psutil');
-    }
-    if (!status.pythonLibs.docx2txt) {
-        libIssues.push('docx2txt');
-    }
-    if (!status.pythonLibs.pandas) {
-        libIssues.push('pandas');
-    }
-    if (!status.pythonLibs.pythonPptx) {
-        libIssues.push('python-pptx');
-    }
-    if (!status.pythonLibs.html2text) {
-        libIssues.push('html2text');
-    }
-
-    if (libIssues.length > 0) {
-        issues.push({
-            name: 'Python 库',
-            severity: 'warning',
-            installCommand: 'cd backend && pip install -r requirements.txt',
-            description: `以下 Python 库缺失: ${libIssues.join(', ')}`
-        });
-    } else {
-        okItems.push(`✅ 所有 Python 库已安装`);
+    for (const tool of optionalTools) {
+        if (checkCommandExists(tool.cmd) || checkCommandExists(tool.cmd === 'drawio' ? 'draw.io' : tool.cmd)) {
+            okItems.push(`✅ ${tool.name}`);
+        } else {
+            issues.push({
+                name: tool.name,
+                severity: 'info',
+                installCommand: tool.hint,
+                description: '未安装，部分图表转换功能不可用',
+            });
+        }
     }
 
     const allOk = issues.length === 0;

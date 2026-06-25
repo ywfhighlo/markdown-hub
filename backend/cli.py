@@ -4,10 +4,14 @@ Office & Docs Converter - 命令行接口
 作为 VS Code 扩展前端调用的统一入口，使用工厂模式选择并实例化正确的转换器
 """
 
-import argparse
 import sys
-import json
 import os
+
+# ── 最先注入 vendor 路径，确保内置库优先可用 ──
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'vendor'))
+
+import argparse
+import json
 import logging
 import base64
 from typing import Dict, Type

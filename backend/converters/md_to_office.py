@@ -3,6 +3,7 @@ import os
 from .base_converter import BaseConverter
 from .batik_converter import BatikConverter
 from .plantuml_converter import PlantUMLConverter
+from .dep_check import lib_available, lib_error, command_available, command_info, install_hint_for, resolve_command
 import json
 import subprocess
 import platform
@@ -12,33 +13,77 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
-# python-pptx相关导入（用于title_and_svg模式）
-try:
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-    from pptx.enum.shapes import MSO_SHAPE
-    from pptx.enum.text import PP_ALIGN
-    from PIL import Image
-    pptx_available = True
-except ImportError:
-    pptx_available = False
+# ─────────────────────────────────────────
+# 懒加载的依赖解析器
+# pptx / win32com / docxtpl 等按需加载，缺一则只影响对应功能
+# ─────────────────────────────────────────
+_IS_WINDOWS = platform.system() == "Windows"
 
-# 平台检测和条件导入（迁移自tools/md_to_docx.py）
-IS_WINDOWS = platform.system() == "Windows"
-if IS_WINDOWS:
-    try:
-        from win32com.client import Dispatch
-        from docx.enum.section import WD_SECTION_START
-        from docxcompose.composer import Composer
-        from docx import Document
-        from docxtpl import DocxTemplate
-        WIN32COM_AVAILABLE = True
-    except ImportError:
-        WIN32COM_AVAILABLE = False
-else:
-    WIN32COM_AVAILABLE = False
-    WD_SECTION_START = None
+# 模块级占位
+_pptx_mod = None
+_Inches = _Pt = _RGBColor = _MSO_SHAPE = _PP_ALIGN = None
+_PIL_Image = None
+_win32com_Dispatch = None
+_WD_SECTION_START = None
+_Composer = None
+_Document = None
+_DocxTemplate = None
+_win32_resolved = False
+_pptx_resolved = False
+
+
+def _resolve_pptx():
+    """按需加载 python-pptx 和 Pillow（PPTX 生成）"""
+    global _pptx_resolved, _pptx_mod, _Inches, _Pt, _RGBColor, _MSO_SHAPE, _PP_ALIGN, _PIL_Image
+    if _pptx_resolved:
+        return
+    _pptx_resolved = True
+    import importlib
+    if lib_available("python-pptx"):
+        _pptx_mod = importlib.import_module("pptx")
+        _Inches = importlib.import_module("pptx.util").Inches
+        _Pt = importlib.import_module("pptx.util").Pt
+        _RGBColor = importlib.import_module("pptx.dml.color").RGBColor
+        _MSO_SHAPE = importlib.import_module("pptx.enum.shapes").MSO_SHAPE
+        _PP_ALIGN = importlib.import_module("pptx.enum.text").PP_ALIGN
+    if lib_available("Pillow"):
+        _PIL_Image = importlib.import_module("PIL").Image
+
+
+def _resolve_win32():
+    """按需加载 Windows COM / docxtpl（DOCX 高级模板）"""
+    global _win32_resolved, _win32com_Dispatch, _WD_SECTION_START, _Composer, _Document, _DocxTemplate
+    if _win32_resolved:
+        return
+    _win32_resolved = True
+    if not _IS_WINDOWS:
+        return
+    import importlib
+    if lib_available("pywin32"):
+        _win32com_Dispatch = importlib.import_module("win32com.client").Dispatch
+    if lib_available("python-docx"):
+        _Document = importlib.import_module("docx").Document
+        try:
+            _WD_SECTION_START = importlib.import_module("docx.enum.section").WD_SECTION_START
+        except Exception:
+            pass
+    if lib_available("docxcompose"):
+        try:
+            _Composer = importlib.import_module("docxcompose.composer").Composer
+        except Exception:
+            pass
+    if lib_available("docxtpl"):
+        _DocxTemplate = importlib.import_module("docxtpl").DocxTemplate
+
+
+def _pptx_available() -> bool:
+    _resolve_pptx()
+    return _pptx_mod is not None
+
+
+def _win32com_available() -> bool:
+    _resolve_win32()
+    return _win32com_Dispatch is not None
 
 class MdToOfficeConverter(BaseConverter):
     """
@@ -50,6 +95,9 @@ class MdToOfficeConverter(BaseConverter):
         super().__init__(output_dir, **kwargs)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 记录最近一次转换失败的具体原因
+        self._last_failure_reason = ""
         
         # Get config from kwargs, with defaults
         self.output_format = kwargs.get('output_format', 'docx')
@@ -135,8 +183,24 @@ class MdToOfficeConverter(BaseConverter):
                 output_file = self._convert_single_file(md_file)
                 if output_file:
                     output_files.append(output_file)
-        
+
+        # 单文件模式下无输出时，给出明确依赖提示
+        if not output_files and os.path.isfile(input_path):
+            if self._last_failure_reason:
+                raise RuntimeError(self._last_failure_reason)
+            fmt = self.output_format.upper()
+            raise RuntimeError(f"Markdown → {fmt} 转换失败，原因未知。请检查日志获取详细信息。")
+
         return output_files
+
+    def _pandoc_missing_hint(self) -> str:
+        """生成 Pandoc 缺失的详细诊断提示"""
+        hint = install_hint_for('pandoc')
+        info = command_info('pandoc')
+        msg = f"系统缺少 Pandoc。{hint}"
+        if info:
+            msg += f"\n诊断: {info}"
+        return msg
 
     def _convert_single_file(self, input_file: str) -> Optional[str]:
         """
@@ -147,19 +211,35 @@ class MdToOfficeConverter(BaseConverter):
             return None
 
         if self.output_format == 'docx':
-            return self._convert_to_docx(input_file)
+            result = self._convert_to_docx(input_file)
+            if not result and not self._last_failure_reason:
+                if not command_available("pandoc"):
+                    self._last_failure_reason = self._pandoc_missing_hint()
+                else:
+                    self._last_failure_reason = "Pandoc 执行失败，请检查 Markdown 内容是否正确"
+            return result
         elif self.output_format == 'pdf':
             # 1. 定义最终的PDF输出路径
             final_pdf_path = str(self.output_dir / f"{Path(input_file).stem}.pdf")
             
-            # 2. 创建临时的DOCX文件
+            # 2. 创建临时的DOCX文件（需要 pandoc）
             docx_path = self._convert_to_docx(input_file, to_pdf=True)
             if not docx_path:
+                if not command_available("pandoc"):
+                    self._last_failure_reason = self._pandoc_missing_hint()
+                else:
+                    self._last_failure_reason = "Pandoc 执行失败，请检查 Markdown 内容是否正确"
                 self.logger.error(f"Failed to create intermediate DOCX for PDF conversion from {input_file}")
                 return None
             
-            # 3. 将临时DOCX转换为最终的PDF
+            # 3. 将临时DOCX转换为最终的PDF（需要 Word COM 或 LibreOffice）
             pdf_path_result = self._convert_docx_to_pdf(docx_path, final_pdf_path)
+            if not pdf_path_result:
+                self._last_failure_reason = (
+                    "缺少 PDF 转换工具。需要以下之一：\n"
+                    "  - Microsoft Word（Windows 系统自带）\n"
+                    "  - LibreOffice：https://www.libreoffice.org/download/"
+                )
             
             # 4. 清理临时的DOCX文件
             if pdf_path_result and os.path.exists(docx_path):
@@ -171,9 +251,25 @@ class MdToOfficeConverter(BaseConverter):
 
             return pdf_path_result
         elif self.output_format == 'html':
-            return self._convert_to_html(input_file)
+            result = self._convert_to_html(input_file)
+            if not result and not self._last_failure_reason:
+                if not command_available("pandoc"):
+                    self._last_failure_reason = self._pandoc_missing_hint()
+                else:
+                    self._last_failure_reason = "Pandoc 执行失败，请检查 Markdown 内容是否正确"
+            return result
         elif self.output_format == 'pptx':
-            return self._convert_to_pptx(input_file)
+            result = self._convert_to_pptx(input_file)
+            if not result and not self._last_failure_reason:
+                if not lib_available("python-pptx"):
+                    err = lib_error("python-pptx")
+                    self._last_failure_reason = f"缺少 python-pptx。请执行: pip install python-pptx" + (f" ({err})" if err else "")
+                elif not lib_available("Pillow"):
+                    err = lib_error("Pillow")
+                    self._last_failure_reason = f"缺少 Pillow。请执行: pip install Pillow" + (f" ({err})" if err else "")
+                else:
+                    self._last_failure_reason = "PPTX 转换失败，请检查 Markdown 内容是否正确"
+            return result
         else:
             self.logger.error(f"Unsupported output format: {self.output_format}")
             return None
@@ -191,7 +287,7 @@ class MdToOfficeConverter(BaseConverter):
 
     def _process_title_and_svg_mode(self, input_file: str, output_file_path: Path) -> Optional[str]:
         """处理title_and_svg模式的PPTX转换"""
-        if not pptx_available:
+        if not _pptx_available():
             self.logger.error("python-pptx库未安装，无法使用title_and_svg模式")
             return self._process_full_mode(input_file, output_file_path)
         
@@ -243,7 +339,7 @@ class MdToOfficeConverter(BaseConverter):
     
     def _process_full_mode(self, input_file: str, output_file_path: Path) -> Optional[str]:
         """处理full模式的PPTX转换（使用python-pptx创建多张幻灯片）"""
-        if not pptx_available:
+        if not _pptx_available():
             self.logger.error("python-pptx库未安装，无法使用full模式")
             return None
         
@@ -1094,8 +1190,11 @@ class MdToOfficeConverter(BaseConverter):
             self.logger.error(traceback.format_exc())
 
     def _check_tool_availability(self, tool_name: str) -> bool:
-        """Checks if an external tool is available in the system's PATH."""
-        return shutil.which(tool_name) is not None
+        """
+        检查外部工具是否可用。
+        走 dep_check 统一探测：PATH 命中 OR 常见安装路径命中都算可用。
+        """
+        return command_available(tool_name)
 
     def _extract_original_title(self, content: str) -> str:
         """从原始内容中提取标题（在任何处理之前）"""
@@ -1590,7 +1689,7 @@ class MdToOfficeConverter(BaseConverter):
             use_advanced_template = (
                 self.template_path and
                 Path(self.template_path).exists() and
-                WIN32COM_AVAILABLE
+                _win32com_available()
             )
 
             # 记录模板使用状态
@@ -1611,7 +1710,7 @@ class MdToOfficeConverter(BaseConverter):
                 all_temp_files.append(str(temp_content_docx))
                 
                 cmd = [
-                    'pandoc', str(processed_md_file),
+                    resolve_command("pandoc") or 'pandoc', str(processed_md_file),
                     '-o', str(temp_content_docx),
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
@@ -1666,7 +1765,7 @@ class MdToOfficeConverter(BaseConverter):
             else:
                 # --- Simple/Cross-Platform Path ---
                 if self.template_path:
-                    if not WIN32COM_AVAILABLE:
+                    if not _win32com_available():
                         self.logger.warning("检测到非Windows环境，模板功能受限（仅应用样式）。")
                     self.logger.info(f"使用DOCX模板进行样式转换 (reference-doc): {self.template_path}")
                 else:
@@ -1678,7 +1777,7 @@ class MdToOfficeConverter(BaseConverter):
                     output_file_path = self.output_dir / f"{input_path.stem}.docx"
                 
                 cmd = [
-                    'pandoc', str(processed_md_file),
+                    resolve_command("pandoc") or 'pandoc', str(processed_md_file),
                     '-o', str(output_file_path),
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
@@ -1755,12 +1854,13 @@ class MdToOfficeConverter(BaseConverter):
 
     def _update_toc(self, docx_path: str):
         """Updates the Table of Contents in a DOCX file using Word COM object."""
-        if not WIN32COM_AVAILABLE:
+        _resolve_win32()
+        if _win32com_Dispatch is None:
             return
         
         word = None
         try:
-            word = Dispatch('Word.Application')
+            word = _win32com_Dispatch('Word.Application')
             doc = word.Documents.Open(str(Path(docx_path).resolve()))
             doc.Fields.Update()
             if hasattr(doc, 'TablesOfContents'):
@@ -1783,10 +1883,11 @@ class MdToOfficeConverter(BaseConverter):
         """Converts a DOCX file to PDF."""
         final_pdf_path = Path(pdf_path)
 
-        if WIN32COM_AVAILABLE:
+        _resolve_win32()
+        if _win32com_Dispatch is not None:
             word = None
             try:
-                word = Dispatch('Word.Application')
+                word = _win32com_Dispatch('Word.Application')
                 doc = word.Documents.Open(str(Path(docx_path).resolve()))
                 doc.SaveAs(str(final_pdf_path.resolve()), FileFormat=17)
                 self.logger.info(f"Successfully created PDF with Word: {final_pdf_path}")
@@ -1802,11 +1903,16 @@ class MdToOfficeConverter(BaseConverter):
                     except:
                         pass
 
-        if self._check_tool_availability("soffice"):
+        soffice_bin = resolve_command("soffice")
+        if soffice_bin:
             try:
                 # soffice 会自动处理输出文件名，我们只需提供目录
-                cmd = ["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(final_pdf_path.parent), docx_path]
-                subprocess.run(cmd, check=True, capture_output=True)
+                cmd = [soffice_bin, "--headless", "--convert-to", "pdf", "--outdir", str(final_pdf_path.parent), docx_path]
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                if result.stdout:
+                    self.logger.info(f"soffice stdout: {result.stdout.strip()[:500]}")
+                if result.stderr:
+                    self.logger.info(f"soffice stderr: {result.stderr.strip()[:500]}")
                 
                 # LibreOffice/soffice 会创建与输入文件同名的PDF，但可能与我们期望的命名不同，所以需要重命名
                 expected_soffice_output = Path(docx_path).with_suffix('.pdf')
@@ -1841,7 +1947,8 @@ class MdToOfficeConverter(BaseConverter):
                 return None
             
             resource_path_arg = '--resource-path=' + str(input_path.parent)
-            cmd = ['pandoc', str(processed_md_file), '--from', 'markdown+smart', '--to', 'html', resource_path_arg]
+            pandoc_bin = resolve_command("pandoc") or 'pandoc'
+            cmd = [pandoc_bin, str(processed_md_file), '--from', 'markdown+smart', '--to', 'html', resource_path_arg]
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
             
@@ -1996,7 +2103,7 @@ class MdToOfficeConverter(BaseConverter):
         Applies a template by rendering variables and composing it with the content document.
         This uses `DocxTemplate` and `docxcompose`.
         """
-        if not WIN32COM_AVAILABLE:
+        if not _win32com_available():
             self.logger.warning("在非Windows系统上无法使用模板功能，将使用简单转换")
             return content_path
         

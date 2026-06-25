@@ -6,21 +6,28 @@ import re
 import shutil
 from pathlib import Path
 
-# 图形处理库
-try:
-    from PIL import Image
-    pil_available = True
-except ImportError:
-    pil_available = False
-
-
-
-# SVG转换使用Batik，不再依赖svglib/reportlab
-svglib_available = False
-
+from .dep_check import lib_available, command_available
 from .base_converter import BaseConverter
 from .plantuml_converter import PlantUMLConverter
 from .batik_converter import BatikConverter
+
+# 懒加载 Pillow
+_PIL_Image = None
+_pil_resolved = False
+
+
+def _resolve_pil():
+    global _pil_resolved, _PIL_Image
+    if _pil_resolved:
+        return
+    _pil_resolved = True
+    if lib_available("Pillow"):
+        _PIL_Image = __import__("PIL").Image
+
+
+def _pil_available() -> bool:
+    _resolve_pil()
+    return _PIL_Image is not None
 
 class DiagramToPngConverter(BaseConverter):
     """
@@ -46,7 +53,7 @@ class DiagramToPngConverter(BaseConverter):
         """检查依赖库和外部工具是否已安装"""
         missing_deps = []
         
-        if not pil_available:
+        if not _pil_available():
             missing_deps.append("Pillow (用于图像处理)")
             self.logger.warning("Pillow库未安装，图像处理功能将受限")
             
@@ -159,7 +166,14 @@ class DiagramToPngConverter(BaseConverter):
                 output_file = self._convert_single_file(diagram_file)
                 if output_file:
                     output_files.append(output_file)
-        
+
+        # 单文件模式下无输出时，给出明确依赖提示
+        if not output_files and os.path.isfile(input_path):
+            raise RuntimeError(
+                "图表转换失败：可能缺少依赖库。"
+                "请执行: pip install Pillow"
+            )
+
         return output_files
     
     def _convert_single_file(self, file_path: str) -> Optional[str]:

@@ -3,56 +3,118 @@ from collections import Counter
 import os
 import unicodedata
 from .base_converter import BaseConverter
+from .dep_check import lib_available, lib_error, command_available, ensure_pymupdf
 import re
 import subprocess
 import tempfile
 from pathlib import Path
 from datetime import datetime
 
-# PDF处理 - PyMuPDF 优先
-try:
-    import fitz
-    fitz_available = True
-except ImportError:
-    fitz_available = False
 
-# PDF处理 - pypdf 作为 OCR 回退
-try:
-    import pypdf
-    import pytesseract
-    from pdf2image import convert_from_path
-    pypdf_available = True
-except ImportError:
-    pypdf_available = False
+# ─────────────────────────────────────────
+# 懒加载的依赖解析器
+# 设计目标：单个依赖缺失不污染其他依赖
+# ─────────────────────────────────────────
 
-# Office文件处理
-try:
-    import docx2txt
-    docx_available = True
-except ImportError:
-    docx_available = False
+def _safe_import(name: str):
+    """
+    动态导入一个第三方库。失败时返回 None。
+    使用 importlib 而非顶层 import，避免任何 ImportError 影响整个模块加载。
+    """
+    import importlib
+    try:
+        return importlib.import_module(name)
+    except Exception:
+        return None
 
-try:
-    import pandas as pd
-    import tabulate
-    pandas_available = True
-except ImportError:
-    pandas_available = False
 
-try:
-    from pptx import Presentation
-    pptx_available = True
-except ImportError:
-    pptx_available = False
+# 模块级懒加载占位
+fitz = None
+pypdf = None
+pytesseract = None
+convert_from_path = None
+docx2txt = None
+pd = None
+tabulate = None
+Presentation = None
+html2text = None
+psutil_mod = None
 
-# HTML转Markdown
-try:
-    import html2text
-    html2text_available = True
-except ImportError:
-    html2text_available = False
+# 各功能是否可用的缓存标志（按需探测，缺失不影响其他功能）
+_flags_resolved = False
 
-pdf_available = fitz_available or pypdf_available
+
+def _resolve_dependencies():
+    """按需解析所有依赖（仅在第一次被调用时执行）"""
+    global _flags_resolved
+    if _flags_resolved:
+        return
+    _flags_resolved = True
+
+    global fitz, pypdf, pytesseract, convert_from_path
+    global docx2txt, pd, tabulate, Presentation, html2text, psutil_mod
+
+    if lib_available("PyMuPDF"):
+        fitz = _safe_import("fitz")
+    else:
+        # 首次自动下载 PyMuPDF（带 C 扩展，无法内置到 vendor）
+        ok, msg = ensure_pymupdf()
+        if ok:
+            fitz = _safe_import("fitz")
+    if lib_available("pypdf"):
+        pypdf = _safe_import("pypdf")
+    if lib_available("pytesseract"):
+        pytesseract = _safe_import("pytesseract")
+    if lib_available("pdf2image"):
+        convert_from_path = _safe_import("pdf2image").convert_from_path
+    if lib_available("docx2txt"):
+        docx2txt = _safe_import("docx2txt")
+    if lib_available("pandas"):
+        pd = _safe_import("pandas")
+    if lib_available("tabulate"):
+        tabulate = _safe_import("tabulate")
+    if lib_available("python-pptx"):
+        Presentation = _safe_import("pptx").Presentation
+    if lib_available("html2text"):
+        html2text = _safe_import("html2text")
+    if lib_available("psutil"):
+        psutil_mod = _safe_import("psutil")
+
+
+# 便捷标志（首次使用后才会被解析）
+def _fitz_available() -> bool:
+    _resolve_dependencies()
+    return fitz is not None
+
+
+def _pypdf_available() -> bool:
+    _resolve_dependencies()
+    return pypdf is not None and pytesseract is not None and convert_from_path is not None
+
+
+def _docx_available() -> bool:
+    _resolve_dependencies()
+    return docx2txt is not None
+
+
+def _pandas_available() -> bool:
+    _resolve_dependencies()
+    return pd is not None and tabulate is not None
+
+
+def _pptx_available() -> bool:
+    _resolve_dependencies()
+    return Presentation is not None
+
+
+def _html2text_available() -> bool:
+    _resolve_dependencies()
+    return html2text is not None
+
+
+def _pdf_available() -> bool:
+    """只要 PyMuPDF 或 pypdf 三件套之一就够"""
+    return _fitz_available() or _pypdf_available()
 
 
 class OfficeToMdConverter(BaseConverter):
@@ -70,40 +132,32 @@ class OfficeToMdConverter(BaseConverter):
         self._check_dependencies()
 
     def _check_dependencies(self):
-        missing_deps = []
+        """在创建实例时记录依赖情况。任意依赖缺失都不会抛出异常。"""
+        # 触发一次懒加载
+        _resolve_dependencies()
 
-        if not fitz_available:
-            missing_deps.append("PyMuPDF (用于PDF智能转换，推荐安装)")
-            self.logger.warning("PyMuPDF未安装，PDF转换将使用基础模式")
+        if not _fitz_available():
+            self.logger.warning("PyMuPDF未安装，PDF智能转换不可用，将尝试 pypdf 兜底")
 
-        if not pypdf_available:
-            self.logger.info("pypdf/pytesseract/pdf2image未安装，OCR回退功能不可用")
+        if not _pypdf_available():
+            self.logger.info("pypdf/pytesseract/pdf2image未安装，扫描版PDF的OCR回退不可用")
 
-        if not pdf_available:
-            missing_deps.append("PyMuPDF 或 pypdf (至少需要一种PDF处理库)")
-            self.logger.warning("PDF处理库均未安装，PDF转换功能将受限")
+        if not _pdf_available():
+            self.logger.error("PDF处理库均未安装：请 pip install PyMuPDF")
 
-        if not docx_available:
-            missing_deps.append("docx2txt (用于Word文档处理)")
-            self.logger.warning("docx2txt库未安装，Word转换功能将受限")
+        if not _docx_available():
+            self.logger.warning("docx2txt未安装，Word(.docx)转换将跳过")
 
-        if not pandas_available:
-            missing_deps.append("pandas, tabulate (用于Excel文件处理)")
-            self.logger.warning("pandas/tabulate库未安装，Excel转换功能将受限")
+        if not _pandas_available():
+            self.logger.warning("pandas/tabulate未安装，Excel转换将跳过")
 
-        if not pptx_available:
-            missing_deps.append("python-pptx (用于PowerPoint文件处理)")
-            self.logger.warning("python-pptx库未安装，PowerPoint转换功能将受限")
+        if not _pptx_available():
+            self.logger.warning("python-pptx未安装，PPTX转换将跳过")
 
-        if not html2text_available:
-            self.logger.warning("html2text库未安装，HTML转换功能将受限")
+        if not _html2text_available():
+            self.logger.warning("html2text未安装，HTML转换将跳过")
 
-        try:
-            import psutil
-            self._psutil_available = True
-        except ImportError:
-            self._psutil_available = False
-            missing_deps.append("psutil (用于批量并行处理和内存监控，推荐安装)")
+        if psutil_mod is None:
             self.logger.info("psutil未安装，批量并行处理功能不可用，将使用串行处理")
 
         try:
@@ -112,11 +166,7 @@ class OfficeToMdConverter(BaseConverter):
                           stderr=subprocess.PIPE,
                           check=True)
         except (subprocess.SubprocessError, FileNotFoundError):
-            missing_deps.append("tesseract-ocr (用于图像OCR处理)")
-            self.logger.warning("tesseract未安装，OCR功能将不可用")
-
-        if missing_deps:
-            self.logger.warning(f"以下依赖缺失，部分功能可能不可用: {', '.join(missing_deps)}")
+            self.logger.info("tesseract未安装，扫描版PDF的OCR功能不可用")
 
     def convert(self, input_path: str) -> List[str]:
         supported_extensions = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.xlsm',
@@ -126,29 +176,48 @@ class OfficeToMdConverter(BaseConverter):
             raise ValueError(f"无效的输入文件或目录: {input_path}")
 
         output_files = []
+        skipped_reasons = []
 
         if os.path.isfile(input_path):
-            output_file = self._convert_single_file(input_path)
-            if output_file:
-                output_files.append(output_file)
+            result = self._convert_single_file(input_path)
+            if result is None:
+                # 单文件模式：None 说明依赖缺失或处理失败，需要给出原因
+                skipped_reasons.append(self._last_skip_reason or "未知错误")
+            else:
+                output_files.append(result)
         else:
             office_files = self._get_files_by_extension(input_path, supported_extensions)
             if not office_files:
                 raise ValueError(f"目录中未找到支持的Office文件: {input_path}")
 
             for office_file in office_files:
-                output_file = self._convert_single_file(office_file)
-                if output_file:
-                    output_files.append(output_file)
+                result = self._convert_single_file(office_file)
+                if result:
+                    output_files.append(result)
+                # 批量模式：跳过缺依赖的文件是正常的，不阻断其他文件
+
+        # 单文件模式下如果有跳过原因且无输出，抛出明确错误
+        if not output_files and skipped_reasons:
+            raise RuntimeError(f"依赖缺失：{'; '.join(skipped_reasons)}")
 
         return output_files
 
     def _convert_single_file(self, file_path: str) -> Optional[str]:
+        self._last_skip_reason = None
         file_path_obj = Path(file_path)
         file_type = self._get_file_type(file_path_obj)
 
         if not file_type:
             self.logger.warning(f"不支持的文件类型: {file_path}")
+            return None
+
+        # 早期按文件类型检查依赖：缺则跳过该文件，不影响其他文件
+        _resolve_dependencies()
+        missing = self._missing_deps_for(file_type)
+        if missing:
+            reason = f"依赖缺失：\n" + "\n".join(f"  - {m}" for m in missing)
+            self.logger.warning(f"跳过 {file_path_obj.name}：{reason}")
+            self._last_skip_reason = reason
             return None
 
         try:
@@ -178,8 +247,50 @@ class OfficeToMdConverter(BaseConverter):
                 return None
 
         except Exception as e:
-            self.logger.error(f"处理文件 {file_path} 失败: {str(e)}")
+            err_msg = f"{type(e).__name__}: {e}"
+            self.logger.error(f"处理文件 {file_path} 失败: {err_msg}")
+            self._last_skip_reason = f"处理失败: {err_msg}"
             return None
+
+    def _missing_deps_for(self, file_type: str) -> List[str]:
+        """返回处理 file_type 所需但当前缺失的依赖库列表（附带具体错误原因）"""
+        type_to_check = {
+            # PDF 智能路径是 PyMuPDF，但允许 pypdf 兜底（需 pypdf+pytesseract+pdf2image 三件套）
+            'pdf':         ('PyMuPDF', 'pypdf', 'pytesseract', 'pdf2image'),
+            'word':        ('docx2txt',),
+            'excel':       ('pandas', 'tabulate'),
+            'powerpoint':  ('python-pptx',),
+            'html':        ('html2text',),
+        }
+        deps = type_to_check.get(file_type, ())
+        missing = [d for d in deps if not lib_available(d)]
+
+        if file_type == 'pdf':
+            primary_ok = 'PyMuPDF' not in missing
+            fallback_ok = not ('pypdf' in missing or 'pytesseract' in missing or 'pdf2image' in missing)
+            if primary_ok or fallback_ok:
+                # 功能可用，清空 missing
+                return []
+            # 两条路径都不可用，构建详细提示
+            if not primary_ok and not fallback_ok:
+                return [
+                    f"PyMuPDF (主路径) 或 pypdf+pytesseract+pdf2image (OCR回退路径) 均不可用",
+                    f"  PyMuPDF: {lib_error('PyMuPDF') or '未安装'}",
+                    f"  pypdf: {lib_error('pypdf') or '未安装'}",
+                    f"  pytesseract: {lib_error('pytesseract') or '未安装'}",
+                    f"  pdf2image: {lib_error('pdf2image') or '未安装'}",
+                    "推荐: pip install PyMuPDF",
+                ]
+
+        # 非 PDF 类型：为每个缺失依赖附带错误原因
+        detailed = []
+        for dep in missing:
+            err = lib_error(dep)
+            if err:
+                detailed.append(f"{dep} ({err})")
+            else:
+                detailed.append(dep)
+        return detailed
 
     def _get_file_type(self, file_path: Path) -> Optional[str]:
         suffix = file_path.suffix.lower()
@@ -202,16 +313,20 @@ class OfficeToMdConverter(BaseConverter):
     # ─────────────────────────────────────────────
 
     def _extract_text_from_pdf(self, pdf_path: Path) -> str:
-        if not pdf_available:
+        if not _pdf_available():
             self.logger.error("PDF处理库未安装，无法处理PDF文件")
             return "## PDF内容提取失败\n\n需安装PDF处理库: pip install PyMuPDF"
 
-        if fitz_available:
+        if _fitz_available():
             return self._extract_pdf_with_fitz(pdf_path)
         else:
             return self._extract_pdf_with_pypdf(pdf_path)
 
     def _extract_pdf_with_fitz(self, pdf_path: Path) -> str:
+        _resolve_dependencies()
+        if fitz is None:
+            return ""
+
         try:
             doc = fitz.open(pdf_path)
         except Exception as e:
@@ -385,7 +500,7 @@ class OfficeToMdConverter(BaseConverter):
 
             md_text = "\n".join(md_lines)
 
-            if total_text_len < 100 and pypdf_available:
+            if total_text_len < 100 and _pypdf_available():
                 self.logger.info(f"{pdf_path.name} 可能是扫描版PDF，尝试使用OCR...")
                 ocr_result = self._ocr_pdf(pdf_path)
                 if ocr_result and len(ocr_result.strip()) > total_text_len:
@@ -397,7 +512,8 @@ class OfficeToMdConverter(BaseConverter):
             doc.close()
 
     def _extract_pdf_bookmarks(self, doc) -> str:
-        if not fitz_available:
+        _resolve_dependencies()
+        if fitz is None:
             return ""
 
         try:
@@ -451,7 +567,8 @@ class OfficeToMdConverter(BaseConverter):
         return anchor if anchor else title.lower().replace(' ', '-')
 
     def _extract_pdf_metadata(self, doc) -> Optional[Dict]:
-        if not fitz_available:
+        _resolve_dependencies()
+        if fitz is None:
             return None
 
         try:
@@ -503,7 +620,8 @@ class OfficeToMdConverter(BaseConverter):
         return "".join(lines)
 
     def _extract_pdf_with_pypdf(self, pdf_path: Path) -> str:
-        if not pypdf_available:
+        _resolve_dependencies()
+        if pypdf is None:
             self.logger.error("pypdf也未安装，无法处理PDF文件")
             return ""
 
@@ -748,7 +866,8 @@ class OfficeToMdConverter(BaseConverter):
             return 'chi_sim+eng'
 
     def _ocr_pdf(self, pdf_path: Path) -> str:
-        if not pypdf_available:
+        _resolve_dependencies()
+        if pypdf is None or pytesseract is None or convert_from_path is None:
             self.logger.error("OCR回退库未安装(pypdf/pytesseract/pdf2image)")
             return ""
 
@@ -939,7 +1058,8 @@ class OfficeToMdConverter(BaseConverter):
     # ─────────────────────────────────────────────
 
     def _extract_text_from_word(self, docx_path: Path) -> str:
-        if not docx_available:
+        _resolve_dependencies()
+        if docx2txt is None:
             self.logger.error("docx2txt库未安装，无法处理Word文件")
             return "## Word内容提取失败\n\n需安装docx2txt库: pip install docx2txt"
 
@@ -952,7 +1072,8 @@ class OfficeToMdConverter(BaseConverter):
             return ""
 
     def _extract_text_from_excel(self, excel_path: Path) -> str:
-        if not pandas_available:
+        _resolve_dependencies()
+        if pd is None or tabulate is None:
             self.logger.error("pandas/tabulate库未安装，无法处理Excel文件")
             return "## Excel内容提取失败\n\n需安装相关库: pip install pandas tabulate openpyxl"
 
@@ -983,7 +1104,8 @@ class OfficeToMdConverter(BaseConverter):
             return ""
 
     def _extract_text_from_powerpoint(self, pptx_path: Path) -> str:
-        if not pptx_available:
+        _resolve_dependencies()
+        if Presentation is None:
             self.logger.error("python-pptx库未安装，无法处理PowerPoint文件")
             return "## PowerPoint内容提取失败\n\n需安装python-pptx库: pip install python-pptx"
 
@@ -1007,7 +1129,8 @@ class OfficeToMdConverter(BaseConverter):
             return ""
 
     def _extract_text_from_html(self, html_path: Path) -> str:
-        if not html2text_available:
+        _resolve_dependencies()
+        if html2text is None:
             self.logger.error("html2text库未安装，无法处理HTML文件")
             return "## HTML内容提取失败\n\n需安装html2text库: pip install html2text"
 

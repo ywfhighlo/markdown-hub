@@ -2,6 +2,19 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
+## [0.3.8] - 2025-06-25
+
+### Changed
+- 实现依赖懒加载和解耦，单个依赖缺失不影响其他功能正常使用
+- 依赖检查改为按功能维度独立检查，前端依赖面板按功能展示状态
+
+### Fixed
+- 修复错误报告笼统不具体的问题，提供精确的依赖缺失原因和解决方案
+- 修复 PyMuPDF 已安装但因 DLL 加载失败导致的误报"缺少依赖"问题
+- 修复 Markdown → PDF 转换失败时错误提示误导用户安装 markdown 库的问题，改为正确提示缺少 Pandoc 或 Word/LibreOffice
+- 修复 PDF → MD 转换失败时提示不准确的问题，区分主路径(PyMuPDF)和回退路径(pypdf+OCR)并展示具体加载错误
+- 移除 requirements.txt 安装流程，改为 README.md 中提供分层安装说明
+
 ## [0.3.5] - 2025-9-30
 
 ### Fixed

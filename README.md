@@ -70,11 +70,53 @@ brew install --cask drawio
 ## 🛠️ 安装
 
 1. 在 VS Code 中安装本扩展
-2. 安装 Python 依赖：
+2. 安装 Python 依赖
+
+### 最小安装（仅保证 PDF → Markdown 可用）
+
 ```bash
-cd backend
-pip install -r requirements.txt
+pip install PyMuPDF
 ```
+
+> 这是最小核心依赖。安装后即可右键 PDF 文件 → Convert to Markdown。
+
+### 按需安装其他功能
+
+各功能所需的依赖互不耦合，缺哪个只影响对应功能，不影响已安装的功能。请根据实际需要选择安装：
+
+| 功能 | 安装命令 |
+|------|----------|
+| Word(.docx) → Markdown | `pip install docx2txt` |
+| Excel → Markdown | `pip install pandas tabulate openpyxl` |
+| PPTX → Markdown | `pip install python-pptx` |
+| HTML → Markdown | `pip install html2text` |
+| Markdown → DOCX | `pip install python-docx docxtpl docxcompose docx2txt` |
+| Markdown → PDF | `pip install markdown`（还需系统安装 [Pandoc](https://pandoc.org/installing.html)） |
+| Markdown → HTML | `pip install markdown` |
+| Markdown → PPTX | `pip install python-pptx Pillow` |
+| 图表 → PNG | `pip install Pillow` |
+
+**Windows 额外**（DOCX 高级模板、PDF 导出）：
+```bash
+pip install pywin32
+```
+
+**macOS 额外**（DOCX 高级模板）：
+```bash
+pip install appscript
+```
+
+### 一键安装全部依赖
+
+```bash
+pip install pandoc-attributes Pillow python-docx docxtpl docxcompose \
+            defusedxml tinycss2 webencodings PyMuPDF pypdf pytesseract \
+            pdf2image docx2txt pandas openpyxl tabulate python-pptx \
+            xlrd html2text markdown lxml cffi chardet pycparser \
+            Jinja2 MarkupSafe psutil typing-extensions
+```
+*Windows 额外执行：`pip install pywin32`*
+*macOS 额外执行：`pip install appscript`*
 
 ## 🚀 使用方法
 
