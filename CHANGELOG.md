@@ -2,7 +2,7 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
-## [0.3.8] - 2025-06-25
+## [0.3.6] - 2025-06-26
 
 ### Changed
 - 实现依赖懒加载和解耦，单个依赖缺失不影响其他功能正常使用

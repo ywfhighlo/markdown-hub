@@ -47,7 +47,13 @@ def _check_lib(lib_name: str) -> Tuple[bool, str]:
     if lib_name in _LIB_CACHE:
         return _LIB_CACHE[lib_name], _LIB_ERROR_CACHE.get(lib_name, "")
 
-    import_name = lib_name.replace('-', '_')
+    # 优先使用 _INSTALLABLE_HEAVY_LIBS 登记的真实 import_name
+    # （如 "PyMuPDF" 包的导入名是 "fitz"，不能简单按 lib_name 推导）
+    heavy_spec = _INSTALLABLE_HEAVY_LIBS.get(lib_name)
+    if heavy_spec and heavy_spec.get("import_name"):
+        import_name = heavy_spec["import_name"]
+    else:
+        import_name = lib_name.replace('-', '_')
 
     # 第一次尝试：直接导入（用户自己装的版本优先）
     try:

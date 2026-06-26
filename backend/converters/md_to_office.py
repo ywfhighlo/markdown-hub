@@ -231,7 +231,14 @@ class MdToOfficeConverter(BaseConverter):
                     self._last_failure_reason = "Pandoc 执行失败，请检查 Markdown 内容是否正确"
                 self.logger.error(f"Failed to create intermediate DOCX for PDF conversion from {input_file}")
                 return None
-            
+
+            # 2.5 给中间 docx 的表格注入边框，避免 PDF 渲染时表格线消失
+            self._inject_table_borders(docx_path)
+
+            # 2.6 修复 reference-doc 模板缺失 Compact/FirstParagraph 等段落样式定义
+            # 导致 LibreOffice 把表格单元格错误关联到列表样式、内容溢出表格的问题
+            self._inject_missing_paragraph_styles(docx_path)
+
             # 3. 将临时DOCX转换为最终的PDF（需要 Word COM 或 LibreOffice）
             pdf_path_result = self._convert_docx_to_pdf(docx_path, final_pdf_path)
             if not pdf_path_result:
@@ -1632,22 +1639,49 @@ class MdToOfficeConverter(BaseConverter):
     
     def _process_definition_lists(self, content: str) -> str:
         """处理定义列表支持"""
-        
+
         # 匹配多行定义格式（术语换行后跟: 定义）
         def replace_multiline_def(match):
             term = match.group(1).strip()
             definition = match.group(2).strip()
             return f"- **{term}**: {definition}\n"
-        
+
         # 匹配同一行定义格式（术语: 定义）
-        content = re.sub(
-            r'^([^:\n]+):\s*(.+)$', 
-            r'- **\1**: \2', 
-            content, 
-            flags=re.MULTILINE
-        )
-        
-        return content
+        # 排除不应被当作定义列表的行：
+        #   - 表格行（以 | 开头，含表格分隔行 |---|）
+        #   - ATX 标题（# 开头）
+        #   - 已是列表项的行（- * + 或 数字. 开头）
+        #   - YAML front matter 块（成对的 --- 围栏内的 key: value 行）
+        lines = content.split('\n')
+        in_yaml = False
+        yaml_fence_seen = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped == '---':
+                if not yaml_fence_seen:
+                    in_yaml = True
+                    yaml_fence_seen = True
+                    continue
+                else:
+                    in_yaml = False
+                    continue
+            if in_yaml:
+                continue
+            # 跳过表格/标题/列表/引用/代码围栏等行
+            if (
+                line.lstrip().startswith('|')
+                or line.lstrip().startswith('#')
+                or re.match(r'^\s*([-*+]|\d+\.)\s', line)
+                or line.lstrip().startswith('>')
+                or stripped.startswith('```')
+            ):
+                continue
+            lines[i] = re.sub(
+                r'^([^:\n]+):\s*(.+)$',
+                r'- **\1**: \2',
+                line
+            )
+        return '\n'.join(lines)
     
     def _process_abbreviations(self, content: str) -> str:
         """处理缩写词支持"""
@@ -1926,6 +1960,153 @@ class MdToOfficeConverter(BaseConverter):
 
         self.logger.error("No suitable tool (Word/LibreOffice) found for PDF conversion.")
         return None
+
+    def _inject_table_borders(self, docx_path: str) -> None:
+        """
+        给 docx 里所有表格注入边框，避免 pandoc 默认无边框样式在
+        Word/LibreOffice 渲染 PDF 时表格线消失（内容还在但视觉上像丢了）。
+        直接改 document.xml 的 <w:tblPr>，不依赖样式表，对两个渲染器都生效。
+        """
+        try:
+            import zipfile
+            import shutil
+            from lxml import etree
+        except ImportError as e:
+            self.logger.warning(f"注入表格边框失败（缺少依赖）: {e}")
+            return
+
+        W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+
+        def make_borders():
+            parent = etree.Element(f'{W}tblBorders')
+            for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+                el = etree.SubElement(parent, f'{W}{edge}')
+                el.set(f'{W}val', 'single')
+                el.set(f'{W}sz', '4')
+                el.set(f'{W}space', '0')
+                el.set(f'{W}color', '000000')
+            return parent
+
+        tmp_path = str(docx_path) + '.tmp.docx'
+        touched = 0
+        try:
+            with zipfile.ZipFile(docx_path, 'r') as zin:
+                with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        data = zin.read(item.filename)
+                        if item.filename == 'word/document.xml':
+                            try:
+                                root = etree.fromstring(data)
+                                for tbl in root.iter(f'{W}tbl'):
+                                    tbl_pr = tbl.find(f'{W}tblPr')
+                                    if tbl_pr is None:
+                                        tbl_pr = etree.Element(f'{W}tblPr')
+                                        tbl.insert(0, tbl_pr)
+                                    # 已有 tblBorders 就跳过
+                                    if tbl_pr.find(f'{W}tblBorders') is not None:
+                                        continue
+                                    tbl_pr.insert(0, make_borders())
+                                    touched += 1
+                                data = etree.tostring(
+                                    root, xml_declaration=True,
+                                    encoding='UTF-8', standalone=True,
+                                )
+                            except Exception as e:
+                                self.logger.warning(f"解析 document.xml 失败，跳过边框注入: {e}")
+                        zout.writestr(item, data)
+            if touched:
+                shutil.move(tmp_path, docx_path)
+                self.logger.info(f"为 {touched} 个表格注入了边框")
+            else:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+        except Exception as e:
+            self.logger.warning(f"注入表格边框失败: {e}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+
+    def _inject_missing_paragraph_styles(self, docx_path: str) -> None:
+        """
+        pandoc 生成 docx 时，会在 document.xml 中引用 Compact / FirstParagraph 等样式，
+        但当 --reference-doc 提供的模板里没有这些样式定义时（样式 ID 全是数字），
+        LibreOffice 在渲染 PDF 时会把未知样式错误关联到列表样式上，导致表格单元格
+        被自动编号、内容溢出到表格外。
+        这里检查 styles.xml 中缺失的 pStyle 引用，注入纯段落样式定义（basedOn Normal，
+        不含任何 numPr），让渲染器按普通段落处理。
+        """
+        try:
+            import zipfile
+            import shutil
+            import re
+        except ImportError as e:
+            self.logger.warning(f"注入缺失段落样式失败（缺少依赖）: {e}")
+            return
+
+        # pandoc 默认引用、但用户模板可能缺失的段落样式
+        candidates = ['Compact', 'FirstParagraph']
+
+        tmp_path = str(docx_path) + '.style.tmp.docx'
+        try:
+            with zipfile.ZipFile(docx_path, 'r') as zin:
+                names = zin.namelist()
+                styles_data = None
+                doc_data = None
+                for n in names:
+                    if n == 'word/styles.xml':
+                        styles_data = zin.read(n)
+                    elif n == 'word/document.xml':
+                        doc_data = zin.read(n)
+
+                if styles_data is None or doc_data is None:
+                    return
+
+                styles_xml = styles_data.decode('utf-8')
+                existing_ids = set(re.findall(r'w:styleId="([^"]+)"', styles_xml))
+
+                # 只注入 document.xml 实际引用且 styles.xml 中缺失的样式
+                referenced_in_doc = set(re.findall(r'w:pStyle w:val="([^"]+)"', doc_data.decode('utf-8')))
+                missing = [s for s in candidates if s in referenced_in_doc and s not in existing_ids]
+                if not missing:
+                    return
+
+                inject_xml = ''
+                for sid in missing:
+                    inject_xml += (
+                        f'<w:style w:type="paragraph" w:customStyle="1" '
+                        f'w:styleId="{sid}">'
+                        f'<w:name w:val="{sid}"/>'
+                        f'<w:basedOn w:val="Normal"/>'
+                        f'<w:qFormat/>'
+                        f'</w:style>'
+                    )
+
+                if '</w:styles>' not in styles_xml:
+                    self.logger.warning("styles.xml 结构异常，无法注入段落样式")
+                    return
+
+                styles_xml = styles_xml.replace('</w:styles>', inject_xml + '</w:styles>')
+
+                with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        data = zin.read(item.filename)
+                        if item.filename == 'word/styles.xml':
+                            data = styles_xml.encode('utf-8')
+                        zout.writestr(item, data)
+
+            shutil.move(tmp_path, docx_path)
+            self.logger.info(f"注入了 {len(missing)} 个缺失的段落样式: {missing}")
+        except Exception as e:
+            self.logger.warning(f"注入缺失段落样式失败: {e}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
 
     def _convert_to_html(self, input_file: str) -> Optional[str]:
         """Converts a Markdown file to a styled HTML file."""

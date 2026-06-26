@@ -404,15 +404,44 @@ class OfficeToMdConverter(BaseConverter):
                 md_lines.append(self._format_pdf_metadata(metadata))
                 md_lines.append("\n")
 
+            find_tables = None
+            total_tables_found = 0
+
             for page_idx, page_spans in enumerate(all_page_spans):
                 page = doc[page_idx]
                 has_figure = False
+
+                # 先尝试识别表格（PyMuPDF 1.23+）。失败或无结果都静默跳过。
+                page_tables = []
+                if find_tables is None:
+                    find_tables = getattr(page, "find_tables", None)
+                if find_tables is not None:
+                    try:
+                        tabs = page.find_tables()
+                        for tb in tabs:
+                            try:
+                                rows = tb.extract()
+                            except Exception:
+                                rows = None
+                            bbox = getattr(tb, "bbox", None)
+                            if rows:
+                                page_tables.append({"rows": rows, "bbox": bbox})
+                    except Exception as tab_e:
+                        self.logger.warning(f"第 {page_idx+1} 页表格识别失败: {tab_e}")
+
+                if page_tables:
+                    total_tables_found += len(page_tables)
+                    self.logger.info(f"第 {page_idx+1} 页识别到 {len(page_tables)} 个表格")
 
                 for span_info in page_spans:
                     text = span_info["text"]
                     bbox = span_info["bbox"]
 
                     if self._is_header_footer(text, bbox, header_footer_texts, page_dict_for_size=None):
+                        continue
+
+                    # 落在任何一张表格 bbox 内的 span 跳过 —— 避免和表格输出重复
+                    if any(self._bbox_inside_rect(bbox, t["bbox"]) for t in page_tables if t.get("bbox")):
                         continue
 
                     text = self._clean_text(text)
@@ -432,7 +461,16 @@ class OfficeToMdConverter(BaseConverter):
                     if re.search(r'(Figure\s+\d+[:.])|(?<![如见看])(图\s*\d+)', text):
                         has_figure = True
 
+                # 输出本页识别到的表格（简化策略：先文本后表格）
+                for t_idx, tb in enumerate(page_tables):
+                    rendered = self._render_table_to_md(tb["rows"], page_idx + 1, t_idx + 1)
+                    if rendered:
+                        md_lines.append(f"\n{rendered}\n")
+
                 extracted_images_md = ""
+
+                # 嵌入位图提取；同时收集"是否需要保底渲染"的信号
+                image_block_count = 0
                 try:
                     image_list = page.get_images(full=True)
                     if image_list:
@@ -473,30 +511,73 @@ class OfficeToMdConverter(BaseConverter):
                                 self.logger.info(f"提取图片: {image_name} ({image_info.get('size_str', 'unknown')})")
                             except Exception as img_e:
                                 self.logger.warning(f"提取图片 xref={xref} 失败: {img_e}")
-                            except Exception as img_e:
-                                self.logger.warning(f"提取图片 xref={xref} 失败: {img_e}")
                 except Exception as img_e:
                     self.logger.warning(f"提取第 {page_idx+1} 页图片时出错: {img_e}")
 
-                if has_figure:
+                # 保底：嵌入位图为空 + 页面有图像类内容时，整页渲染
+                # 解决 "完全不生成 _assets" 问题（矢量绘制/绘制流的图，get_images 返回空）
+                if not extracted_images_md:
                     try:
-                        self.logger.info(f"第 {page_idx+1} 页包含Figure，尝试渲染页面快照...")
-                        if not assets_dir_created:
-                            assets_dir.mkdir(parents=True, exist_ok=True)
-                            assets_dir_created = True
+                        page_dict = page.get_text("dict")
+                        image_block_count = sum(
+                            1 for b in page_dict.get("blocks", []) if b.get("type") == 1
+                        )
+                    except Exception:
+                        pass
 
-                        pix = page.get_pixmap(dpi=150)
-                        render_filename = f"page_{page_idx+1}_render.png"
-                        render_path = assets_dir / render_filename
-                        pix.save(str(render_path))
+                    need_snapshot = False
+                    snapshot_reason = ""
+                    if has_figure:
+                        need_snapshot = True
+                        snapshot_reason = "页面包含 Figure 字样"
+                    elif image_block_count > 0:
+                        need_snapshot = True
+                        snapshot_reason = f"页面包含 {image_block_count} 个图像块"
+                    elif not page_spans and total_text_len == 0:
+                        # 纯图页（没有任何文本）—— 也保底渲染
+                        need_snapshot = True
+                        snapshot_reason = "页面无文本，疑似纯图页"
 
-                        relative_path = f"{assets_dir_name}/{render_filename}"
-                        extracted_images_md += f"\n> **Page {page_idx+1} Snapshot (Contains Figure)**\n\n![Page {page_idx+1} Render]({relative_path})\n\n"
-                    except Exception as render_e:
-                        self.logger.warning(f"渲染第 {page_idx+1} 页失败: {render_e}")
+                    if need_snapshot:
+                        try:
+                            if not assets_dir_created:
+                                assets_dir.mkdir(parents=True, exist_ok=True)
+                                assets_dir_created = True
+
+                            pix = page.get_pixmap(dpi=150)
+                            render_filename = f"page_{page_idx+1}_render.png"
+                            render_path = assets_dir / render_filename
+                            pix.save(str(render_path))
+
+                            # 用渲染产物尺寸走一次过滤，避免对纯文字页也盲目渲染
+                            image_info = self._analyze_pdf_image(
+                                render_path.stat().st_size if render_path.exists() else 0,
+                                pix.width, pix.height,
+                            )
+                            if image_info.get("skip_reason"):
+                                self.logger.info(f"跳过页面快照: {render_filename} - {image_info['skip_reason']}")
+                                if render_path.exists():
+                                    try:
+                                        render_path.unlink()
+                                    except Exception:
+                                        pass
+                            else:
+                                relative_path = f"{assets_dir_name}/{render_filename}"
+                                self.logger.info(
+                                    f"渲染页面快照: {render_filename}（{snapshot_reason}）"
+                                )
+                                extracted_images_md += (
+                                    f"\n> **Page {page_idx+1} Snapshot**\n\n"
+                                    f"![Page {page_idx+1} Render]({relative_path})\n\n"
+                                )
+                        except Exception as render_e:
+                            self.logger.warning(f"渲染第 {page_idx+1} 页失败: {render_e}")
 
                 if extracted_images_md:
                     md_lines.append(f"\n## 提取的图片\n\n{extracted_images_md}")
+
+            if total_tables_found > 0:
+                self.logger.info(f"全文共识别到 {total_tables_found} 个表格")
 
             md_text = "\n".join(md_lines)
 
@@ -793,6 +874,55 @@ class OfficeToMdConverter(BaseConverter):
                 return True
 
         return False
+
+    def _bbox_inside_rect(self, bbox: Tuple, rect: Tuple, margin: float = 1.0) -> bool:
+        """判断 bbox 是否落在 rect 矩形内（带一点容差）。"""
+        try:
+            bx0, by0, bx1, by1 = bbox
+            rx0, ry0, rx1, ry1 = rect
+            return (bx0 >= rx0 - margin and by0 >= ry0 - margin
+                    and bx1 <= rx1 + margin and by1 <= ry1 + margin)
+        except Exception:
+            return False
+
+    def _render_table_to_md(self, rows: List[List[str]], page_num: int = 0, table_num: int = 0) -> str:
+        """把 PyMuPDF extract() 返回的二维数据转成 GFM 管道表格。"""
+        if not rows:
+            return ""
+
+        cleaned_rows: List[List[str]] = []
+        for row in rows:
+            cells = []
+            for cell in (row or []):
+                if cell is None:
+                    cells.append("")
+                    continue
+                cell = self._clean_text(str(cell)).strip()
+                cell = cell.replace("\r\n", "\n").replace("\r", "\n")
+                cell = cell.replace("\n", "<br>")
+                cell = cell.replace("|", "\\|")
+                cells.append(cell)
+            cleaned_rows.append(cells)
+
+        # 补齐列数（pymupdf 偶尔返回不齐）
+        max_cols = max(len(r) for r in cleaned_rows)
+        for r in cleaned_rows:
+            while len(r) < max_cols:
+                r.append("")
+
+        if max_cols == 0:
+            return ""
+
+        out_lines: List[str] = []
+        # 表头
+        out_lines.append("| " + " | ".join(cleaned_rows[0]) + " |")
+        # 分隔行
+        out_lines.append("| " + " | ".join(["---"] * max_cols) + " |")
+        # 数据行
+        for r in cleaned_rows[1:]:
+            out_lines.append("| " + " | ".join(r) + " |")
+
+        return "\n".join(out_lines)
 
     def _analyze_pdf_image(self, image_data: bytes, width: int, height: int) -> Dict:
         info = {
