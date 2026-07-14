@@ -126,6 +126,10 @@ export function executePythonScript(
                 args.push('--promote-headings');
             }
 
+            if (conversionOptions.codeHighlightTheme) {
+                args.push('--code-highlight-theme', conversionOptions.codeHighlightTheme);
+            }
+
             if (conversionOptions.popplerPath) {
                 args.push('--poppler-path', conversionOptions.popplerPath);
             }

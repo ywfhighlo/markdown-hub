@@ -31,6 +31,71 @@ _DocxTemplate = None
 _win32_resolved = False
 _pptx_resolved = False
 
+# pandoc 3.10 内置的 8 个高亮主题白名单
+_HIGHLIGHT_BUILTIN = {
+    'pygments', 'tango', 'espresso', 'zenburn',
+    'kate', 'monochrome', 'breezedark', 'haddock'
+}
+# 关闭高亮的合法取值集合
+_HIGHLIGHT_OFF = {'', 'off', 'none', 'disable'}
+
+
+# ─────────────────────────────────────────
+# pipe table 转义工具
+# 供 md_to_office 与 office_to_md 共用
+# ─────────────────────────────────────────
+
+def _split_table_row(row: str) -> List[str]:
+    """按未转义的 | 切分表格行，支持 \\| 转义语义。
+
+    - \\\\| → \\\\（字面反斜杠，不是分隔符）
+    - \\|   → |（字面 pipe，不是分隔符）
+
+    返回 cell 列表，cell 内 \| 已还原为字面 |，
+    首尾两端由 | 引入的空 cell 自动剔除。
+    """
+    cells: List[str] = []
+    current: List[str] = []
+    bs = 0
+
+    for ch in row.strip():
+        if ch == '\\':
+            bs += 1
+            continue
+        if ch == '|':
+            if bs % 2 == 0:
+                # 偶数个反斜杠：该 | 是列分隔符
+                current.extend(['\\'] * (bs // 2))
+                cells.append(''.join(current).strip())
+                current = []
+            else:
+                # 奇数个反斜杠：上一个反斜杠转义了 |，还原为字面 |
+                current.extend(['\\'] * (bs // 2))
+                current.append('|')
+            bs = 0
+            continue
+        if bs:
+            current.extend(['\\'] * bs)
+            bs = 0
+        current.append(ch)
+
+    if bs:
+        current.extend(['\\'] * bs)
+    cells.append(''.join(current).strip())
+
+    # 去掉首尾的 | 引入的空 cell
+    s = row.strip()
+    if s.startswith('|'):
+        cells = cells[1:]
+    if s.endswith('|'):
+        cells = cells[:-1]
+    return cells
+
+
+def _render_table_cell(cell: str) -> str:
+    """把 cell 内的 | 转义为 \\| 以安全插入 pipe table。"""
+    return cell.replace('|', '\\|')
+
 
 def _resolve_pptx():
     """按需加载 python-pptx 和 Pillow（PPTX 生成）"""
@@ -108,7 +173,10 @@ class MdToOfficeConverter(BaseConverter):
         self.mobilephone = kwargs.get('mobilephone', '')
         self.email = kwargs.get('email', '')
         self.promote_headings = kwargs.get('promote_headings', False)
-        
+
+        # 代码块高亮主题（pandoc --highlight-style）
+        self.code_highlight_theme = kwargs.get('code_highlight_theme', 'pygments')
+
         # PPTX SVG 转换模式配置 - 使用默认值
         self.pptx_svg_mode = 'full'
         
@@ -1419,6 +1487,25 @@ class MdToOfficeConverter(BaseConverter):
         except Exception as e:
             self.logger.warning(f"Batik转换器临时文件清理失败: {e}")
 
+    # ─────────────────────────────────────────
+    # 代码块高亮（由 pandoc --highlight-style 控制）
+    # ─────────────────────────────────────────
+
+    def _highlight_style_args(self) -> List[str]:
+        """
+        根据 self.code_highlight_theme 构造 pandoc 的高亮参数。
+        - 'off'/空/None → ['--no-highlight']
+        - 内置主题名 → ['--highlight-style=<name>']
+        - 其他 → 记 warning，回退到 pygments
+        """
+        theme = (getattr(self, 'code_highlight_theme', 'pygments') or 'pygments').strip()
+        if theme.lower() in _HIGHLIGHT_OFF:
+            return ['--no-highlight']
+        if theme in _HIGHLIGHT_BUILTIN:
+            return [f'--highlight-style={theme}']
+        self.logger.warning(f"未识别的高亮主题 '{theme}'，回退到 pygments")
+        return ['--highlight-style=pygments']
+
     def _process_enhanced_markdown(self, content: str) -> str:
         """
         增强Markdown语法支持的主入口
@@ -1428,11 +1515,12 @@ class MdToOfficeConverter(BaseConverter):
         - 脚注 ([^1])
         - 定义列表 (术语: 定义)
         - 缩写词 (<abbr>)
-        - 代码高亮（```language...```, `code`）
         - 删除线 (~~text~~)
         - 上下标 (^上标^, ~下标~)
         - 水平线 (---, ***, ___)
         - 键盘按键 (<kbd>key</kbd>)
+
+        注：代码块高亮由 pandoc --highlight-style 处理，不再在本函数中预处理。
         """
 
         # 1. 处理数学公式
@@ -1450,19 +1538,16 @@ class MdToOfficeConverter(BaseConverter):
         # 5. 处理缩写词
         content = self._process_abbreviations(content)
 
-        # 6. 处理代码高亮
-        content = self._process_code_highlighting(content)
-
-        # 7. 处理删除线
+        # 6. 处理删除线
         content = self._process_strikethrough(content)
 
-        # 8. 处理上下标
+        # 7. 处理上下标
         content = self._process_superscript_subscript(content)
 
-        # 9. 处理键盘按键
+        # 8. 处理键盘按键
         content = self._process_keyboard_keys(content)
 
-        # 10. 处理水平线（增强版）
+        # 9. 处理水平线（增强版）
         content = self._process_horizontal_rules(content)
 
         return content
@@ -1749,10 +1834,12 @@ class MdToOfficeConverter(BaseConverter):
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
                 ]
+                # 代码块高亮（pandoc --highlight-style / --no-highlight）
+                cmd.extend(self._highlight_style_args())
                 # 标题提级现在在预处理阶段处理，不再使用Pandoc参数
                 # if self.promote_headings:
                 #     cmd.append('--shift-heading-level-by=-1')
-                    
+
                 subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
 
                 # 2. Get title and compose final document
@@ -1816,7 +1903,9 @@ class MdToOfficeConverter(BaseConverter):
                     '--resource-path=' + str(input_path.parent),
                     '--quiet'
                 ]
-                
+                # 代码块高亮（pandoc --highlight-style / --no-highlight）
+                cmd.extend(self._highlight_style_args())
+
                 # 如果没有提供模板，创建一个简单的参考文档来控制字体
                 if not (self.template_path and Path(self.template_path).exists()):
                     # 创建一个简单的参考文档来强制设置字体
@@ -2130,6 +2219,8 @@ class MdToOfficeConverter(BaseConverter):
             resource_path_arg = '--resource-path=' + str(input_path.parent)
             pandoc_bin = resolve_command("pandoc") or 'pandoc'
             cmd = [pandoc_bin, str(processed_md_file), '--from', 'markdown+smart', '--to', 'html', resource_path_arg]
+            # 代码块高亮（pandoc --highlight-style / --no-highlight）
+            cmd.extend(self._highlight_style_args())
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
             
@@ -2568,7 +2659,12 @@ class MdToOfficeConverter(BaseConverter):
             
             for i, line in enumerate(lines):
                 original_line = line
-                
+
+                # 表格行显式跳过（防御性，避免未来正则调整误伤 pipe table）
+                if line.lstrip().startswith('|'):
+                    processed_lines.append(line)
+                    continue
+
                 # 首先处理表格中的HTML列表
                 line = process_table_lists(line)
                 
@@ -2663,7 +2759,12 @@ class MdToOfficeConverter(BaseConverter):
             for i, line in enumerate(lines):
                 current_line = line
                 stripped_line = line.lstrip()
-                
+
+                # 表格行显式跳过（防御性，避免空行误插入到表格前后）
+                if stripped_line.startswith('|'):
+                    processed_lines.append(current_line)
+                    continue
+
                 # 检查当前行是否为列表项
                 is_current_list_item = any(stripped_line.startswith(marker) for marker in list_markers)
                 
@@ -2747,17 +2848,36 @@ class MdToOfficeConverter(BaseConverter):
                 header_line = lines[0]
                 separator_line = lines[1]
                 data_lines = lines[2:]
-                
-                # 提取列数据
-                header_cells = [cell.strip() for cell in header_line.split('|')[1:-1]]
+
+                # 提取列数据（按未转义 | 切分，识别合法的 \\|）
+                header_cells = _split_table_row(header_line)
+                if not header_cells:
+                    return table_text
+
+                # 分隔行解析 + 有效性校验：
+                # - 列数必须与表头一致
+                # - 每个 cell 必须匹配 :?-+:?（不允许 \| 等杂字符）
+                separator_cells = _split_table_row(separator_line)
+                if len(separator_cells) != len(header_cells):
+                    return table_text
+                for sc in separator_cells:
+                    if not re.fullmatch(r':?-+:?', sc.strip()):
+                        return table_text
+
+                # 数据行：列数严格匹配表头，否则整张表跳过优化
+                # （按 GFM 语义，含合法 \| 应已被 _split_table_row 还原成字面 |）
+                expected_cols = len(header_cells)
                 data_rows = []
                 for line in data_lines:
                     if line.strip():
-                        cells = [cell.strip() for cell in line.split('|')[1:-1]]
-                        if len(cells) == len(header_cells):
+                        cells = _split_table_row(line)
+                        if len(cells) == expected_cols:
                             data_rows.append(cells)
-                
-                if not header_cells or not data_rows:
+                        else:
+                            # 任一行不齐，整张表跳过优化（避免局部破坏）
+                            return table_text
+
+                if not data_rows:
                     return table_text
                 
                 # 检查第一列是否所有内容的显示宽度都小于20（相当于10个汉字）
@@ -2820,14 +2940,13 @@ class MdToOfficeConverter(BaseConverter):
                     # 计算需要的空格数来达到目标宽度
                     cell_width = get_display_width(cell)
                     padding = max(1, target_width - cell_width + 2)  # 至少1个空格
-                    header_parts.append(f' {cell}' + ' ' * (padding - 1) + '|')
+                    header_parts.append(f' {_render_table_cell(cell)}' + ' ' * (padding - 1) + '|')
                 result_lines.append(''.join(header_parts))
                 
-                # 分隔行
-                separator_parts = ['|']
-                for target_width in target_widths:
-                    separator_parts.append('-' * (target_width + 2) + '|')
-                result_lines.append(''.join(separator_parts))
+                # 分隔行：保留原始冒号（对齐标记）原样透传
+                # pandoc 用冒号决定对齐（:---: 居中、---: 右对齐、:--- 左对齐），
+                # 破折号长度不影响列宽（由内容自动决定），因此物理宽度不再重写。
+                result_lines.append(separator_line)
                 
                 # 数据行
                 for row in data_rows:
@@ -2836,7 +2955,7 @@ class MdToOfficeConverter(BaseConverter):
                         cell = row[i] if i < len(row) else ''
                         cell_width = get_display_width(cell)
                         padding = max(1, target_width - cell_width + 2)  # 至少1个空格
-                        row_parts.append(f' {cell}' + ' ' * (padding - 1) + '|')
+                        row_parts.append(f' {_render_table_cell(cell)}' + ' ' * (padding - 1) + '|')
                     result_lines.append(''.join(row_parts))
                 
                 return '\n'.join(result_lines)
@@ -2854,45 +2973,6 @@ class MdToOfficeConverter(BaseConverter):
         except Exception as e:
             self.logger.warning(f"表格列宽优化失败: {e}")
             return content
-
-    def _process_code_highlighting(self, content: str) -> str:
-        """
-        处理代码高亮语法：
-        - 块级代码块：```language
-        - 行内代码：`code`
-        """
-        # 处理行内代码 `code`
-        def replace_inline_code(match):
-            code_content = match.group(1)
-            # 转义特殊字符，但保留基本的格式化
-            code_content = code_content.replace('*', '\\*').replace('_', '\\_')
-            return f"`{code_content}`"
-
-        # 先处理行内代码，避免与块级代码冲突
-        content = re.sub(r'`([^`]+)`', replace_inline_code, content)
-
-        # 处理带语言标注的块级代码块
-        def replace_code_block(match):
-            language = match.group(1).strip() if match.group(1) else ''
-            code_content = match.group(2)
-            # 转义特殊字符
-            code_content = code_content.replace('<', '&lt;').replace('>', '&gt;')
-
-            # 如果指定了语言，添加语言标识
-            if language:
-                return f"\n\n**[{language}代码块]**\n\n```\n{code_content}\n```\n\n"
-            else:
-                return f"\n\n**代码块**\n\n```\n{code_content}\n```\n\n"
-
-        # 匹配 ```language 或 ```
-        content = re.sub(
-            r'```(\w+)?\n(.*?)\n```',
-            replace_code_block,
-            content,
-            flags=re.DOTALL
-        )
-
-        return content
 
     def _process_strikethrough(self, content: str) -> str:
         """处理删除线语法：~~text~~"""

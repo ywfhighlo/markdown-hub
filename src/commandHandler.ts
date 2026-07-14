@@ -349,7 +349,9 @@ export async function handleConvertCommand(
                     author: config.get<string>('author', ''),
                     email: config.get<string>('email', ''),
                     mobilephone: config.get<string>('mobilephone', ''),
-                    promoteHeadings: config.get<boolean>('promoteHeadings', true)
+                    promoteHeadings: config.get<boolean>('promoteHeadings', true),
+                    // 代码块高亮主题（pandoc --highlight-style），仅作用于 DOCX/PDF/HTML
+                    codeHighlightTheme: config.get<string>('codeHighlightTheme', 'pygments')
                 };
                 conversionOptions = { ...sharedOptions };
 

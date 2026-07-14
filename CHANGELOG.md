@@ -2,6 +2,18 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
+## [Unreleased]
+
+### Added (开发中，发布时再总结)
+- 代码块真高亮：默认主题 pygments；新增设置 `markdown-hub.codeHighlightTheme` 可选 8 个 pandoc 内置主题（pygments / tango / espresso / zenburn / kate / monochrome / breezedark / haddock）或 `off`。作用于 Markdown → DOCX / PDF / HTML；PPTX 不受影响。
+
+### Fixed (开发中，发布时再总结)
+- pipe table 对齐冒号（`:---:`、`---:`、`:---`）被忽略的回归：分隔行原始冒号不再被剥离，DOCX / PDF / HTML 输出恢复列对齐语义。
+- `_process_code_highlighting` 反向作用问题（删除）：旧实现将 ` ```python ` 改写为无语言标注并插入 `[python代码块]` 文本，导致真高亮不可用。
+
+### Changed (开发中，发布时再总结)
+- 在 `_normalize_unordered_lists` 与 `_ensure_list_spacing` 中显式跳过 pipe table 行（防御性早退）。
+
 ## [0.3.6] - 2025-06-26
 
 ### Changed

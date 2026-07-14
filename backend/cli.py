@@ -67,6 +67,8 @@ def main():
     parser.add_argument('--email', help='电子邮箱 (可选)')
     parser.add_argument('--promote-headings', action='store_true',
                        help='将Markdown标题提升一级（例如## -> 1级标题）')
+    parser.add_argument('--code-highlight-theme', default='pygments',
+                       help='pandoc 代码块高亮主题（pygments/tango/espresso/zenburn/kate/monochrome/breezedark/haddock/off，默认 pygments）')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='启用详细日志输出')
     parser.add_argument('--poppler-path',
@@ -120,6 +122,7 @@ def main():
             'email': args.email,
             'mobilephone': args.mobilephone,
             'promote_headings': args.promote_headings,
+            'code_highlight_theme': args.code_highlight_theme,
             'poppler_path': args.poppler_path,
             'tesseract_cmd': args.tesseract_cmd,
             # SVG转换参数

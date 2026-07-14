@@ -356,6 +356,24 @@
           "markdownDescription": "**SVG Output Width**\n\nMaximum width in pixels for converted SVG images. Height will be scaled proportionally.",
           "scope": "window",
           "order": 62
+        },
+        "markdown-hub.codeHighlightTheme": {
+          "type": "string",
+          "enum": [
+            "pygments",
+            "tango",
+            "espresso",
+            "zenburn",
+            "kate",
+            "monochrome",
+            "breezedark",
+            "haddock",
+            "off"
+          ],
+          "default": "pygments",
+          "markdownDescription": "**Code Block Highlight Theme**\n\nSyntax highlight style for fenced code blocks in DOCX/PDF/HTML outputs. Uses pandoc built-in themes. Set to `off` to disable highlighting. PPTX output is unaffected.",
+          "scope": "window",
+          "order": 65
         }
       }
     }
