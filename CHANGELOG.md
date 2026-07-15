@@ -23,6 +23,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text
 - HTML → Markdown conversion (right-click any `.html` or `.htm` file)
 - DOCX → Markdown now preserves headings, bold/italic, tables, and lists (was plain text only)
+- Markdown → EPUB 3 conversion (right-click → "Convert to EPUB"): generates proper EPUB with TOC, navigation, and MathML math rendering for e-readers
 
 ## [0.3.5] - 2025-09-30
 

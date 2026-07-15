@@ -32,6 +32,7 @@ CONVERTER_REGISTRY = {
     'md-to-pdf': MdToOfficeConverter,
     'md-to-html': MdToOfficeConverter,
     'md-to-pptx': MdToOfficeConverter,
+    'md-to-epub': MdToOfficeConverter,
     'office-to-md': OfficeToMdConverter,
     'diagram-to-png': DiagramToPngConverter,
     'html-to-md': OfficeToMdConverter,

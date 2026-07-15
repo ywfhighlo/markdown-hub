@@ -41,6 +41,7 @@
     "onCommand:markdown-hub.mdToDocx",
     "onCommand:markdown-hub.mdToPdf",
     "onCommand:markdown-hub.mdToHtml",
+    "onCommand:markdown-hub.mdToEpub",
     "onCommand:markdown-hub.officeToMd",
     "onCommand:markdown-hub.diagramToPng",
     "onCommand:markdown-hub.openTemplateSettings",
@@ -66,6 +67,10 @@
       {
         "command": "markdown-hub.mdToPptx",
         "title": "Convert to PPTX"
+      },
+      {
+        "command": "markdown-hub.mdToEpub",
+        "title": "Convert to EPUB"
       },
       {
         "command": "markdown-hub.officeToMd",
@@ -160,8 +165,13 @@
         },
         {
           "when": "resourceLangId == markdown",
-          "command": "markdown-hub.openTemplateSettings",
+          "command": "markdown-hub.mdToEpub",
           "group": "2_conversion@5"
+        },
+        {
+          "when": "resourceLangId == markdown",
+          "command": "markdown-hub.openTemplateSettings",
+          "group": "2_conversion@6"
         },
         {
           "when": "resourceExtname == .docx || resourceExtname == .xlsx || resourceExtname == .ppt || resourceExtname == .pdf",
@@ -197,6 +207,11 @@
           "when": "resourceIsFolder",
           "command": "markdown-hub.mdToPptx",
           "group": "2_conversion@4"
+        },
+        {
+          "when": "resourceIsFolder",
+          "command": "markdown-hub.mdToEpub",
+          "group": "2_conversion@5"
         },
         {
           "when": "resourceIsFolder",

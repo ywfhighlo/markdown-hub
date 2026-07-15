@@ -345,9 +345,59 @@ class MdToOfficeConverter(BaseConverter):
                 else:
                     self._last_failure_reason = "PPTX 转换失败，请检查 Markdown 内容是否正确"
             return result
+        elif self.output_format == 'epub':
+            result = self._convert_to_epub(input_file)
+            if not result and not self._last_failure_reason:
+                if not command_available("pandoc"):
+                    self._last_failure_reason = self._pandoc_missing_hint()
+                else:
+                    self._last_failure_reason = "Pandoc execution failed — check your Markdown content"
+            return result
         else:
             self.logger.error(f"Unsupported output format: {self.output_format}")
             return None
+
+    def _convert_to_epub(self, input_file: str) -> Optional[str]:
+        """Converts a Markdown file to EPUB 3 via pandoc."""
+        input_path = Path(input_file)
+        processed_content, temp_images = self._preprocess_markdown(input_file)
+        if processed_content is None:
+            return None
+
+        processed_md_file = input_path.with_name(f"{input_path.stem}_processed_{os.getpid()}.md")
+        processed_md_file.write_text(processed_content, encoding='utf-8')
+        all_temp_files = temp_images + [str(processed_md_file)]
+
+        try:
+            if not self._check_tool_availability("pandoc"):
+                raise FileNotFoundError("Pandoc not found. Please install pandoc and add it to your PATH.")
+
+            cmd = [
+                resolve_command("pandoc") or 'pandoc', str(processed_md_file),
+                '-t', 'epub3',
+                '-o', str(self.output_dir / f"{input_path.stem}.epub"),
+                '--resource-path=' + str(input_path.parent),
+                '--quiet'
+            ]
+            # Apply shared arguments (highlight style)
+            cmd.extend(self._highlight_style_args())
+            # EPUB supports MathML for math rendering (unlike HTML which uses MathJax)
+            cmd.append('--mathml')
+
+            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+
+            output_path = self.output_dir / f"{input_path.stem}.epub"
+            self.logger.info(f"Successfully converted {input_file} to {output_path}")
+            return str(output_path)
+
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"EPUB conversion failed: {e.stderr or e}")
+            return None
+        except Exception as e:
+            self.logger.error(f"EPUB conversion error: {e}")
+            return None
+        finally:
+            self._cleanup_temp_files(all_temp_files, str(processed_md_file), input_file)
 
     def _convert_to_pptx(self, input_file: str) -> Optional[str]:
         """Converts a Markdown file to PPTX."""

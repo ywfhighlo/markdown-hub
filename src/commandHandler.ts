@@ -5,7 +5,7 @@ import * as os from 'os';
 import { executePythonScript } from './pythonService';
 import { checkDependencies, checkDependenciesWithQuickPick, DependencyStatus } from './dependencyChecker';
 
-type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
+type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-to-epub' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
 
 interface HistoryRecord {
     id: string;
@@ -101,6 +101,7 @@ function getConversionTypeLabel(type: ConversionType): string {
         'md-to-pdf': 'Markdown → PDF',
         'md-to-html': 'Markdown → HTML',
         'md-to-pptx': 'Markdown → PPT',
+        'md-to-epub': 'Markdown → EPUB',
         'office-to-md': 'Office → Markdown',
         'diagram-to-png': 'Diagram → PNG',
         'html-to-md': 'HTML → Markdown'
@@ -344,7 +345,7 @@ export async function handleConvertCommand(
 
             let conversionOptions: any = null;
 
-            if (['md-to-docx', 'md-to-pdf', 'md-to-pptx'].includes(conversionType)) {
+            if (['md-to-docx', 'md-to-pdf', 'md-to-pptx', 'md-to-epub'].includes(conversionType)) {
                 const sharedOptions = {
                     projectName: config.get<string>('projectName', ''),
                     author: config.get<string>('author', ''),
@@ -381,6 +382,10 @@ export async function handleConvertCommand(
                 } else if (conversionType === 'md-to-html') {
                     conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
                     conversionOptions.svgOutputWidth = config.get<number>('svgOutputWidth', 800);
+                } else if (conversionType === 'md-to-epub') {
+                    conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
+                    conversionOptions.svgOutputWidth = config.get<number>('svgOutputWidth', 800);
+                    conversionOptions.codeHighlightTheme = config.get<string>('codeHighlightTheme', 'pygments');
                 }
             } else if (conversionType === 'office-to-md') {
                 conversionOptions = {
