@@ -44,7 +44,7 @@ function loadHistory(): HistoryRecord[] {
             return JSON.parse(data);
         }
     } catch (error) {
-        console.error('加载历史记录失败:', error);
+        console.error('Failed to load history:', error);
     }
     return [];
 }
@@ -54,7 +54,7 @@ function saveHistory(history: HistoryRecord[]): void {
         const historyData = history.slice(0, MAX_HISTORY_RECORDS);
         fs.writeFileSync(HISTORY_FILE, JSON.stringify(historyData, null, 2), 'utf8');
     } catch (error) {
-        console.error('保存历史记录失败:', error);
+        console.error('Failed to save history:', error);
     }
 }
 
@@ -73,9 +73,9 @@ function formatFileSize(bytes: number): string {
 }
 
 function formatDuration(ms: number): string {
-    if (ms < 1000) return `${ms}毫秒`;
-    if (ms < 60000) return `${(ms / 1000).toFixed(1)}秒`;
-    return `${(ms / 60000).toFixed(1)}分钟`;
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    return `${(ms / 60000).toFixed(1)}min`;
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -85,11 +85,11 @@ function formatTimestamp(timestamp: string): string {
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
     if (days === 0) {
-        return `今天 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+        return `Today ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     } else if (days === 1) {
-        return `昨天 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+        return `Yesterday ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     } else if (days < 7) {
-        return `${days}天前`;
+        return `${days} days ago`;
     } else {
         return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
@@ -102,7 +102,7 @@ function getConversionTypeLabel(type: ConversionType): string {
         'md-to-html': 'Markdown → HTML',
         'md-to-pptx': 'Markdown → PPT',
         'office-to-md': 'Office → Markdown',
-        'diagram-to-png': '图表 → PNG'
+        'diagram-to-png': 'Diagram → PNG'
     };
     return labels[type] || type;
 }
@@ -110,46 +110,46 @@ function getConversionTypeLabel(type: ConversionType): string {
 function classifyError(errorMessage: string): { category: string; suggestion: string } {
     const lowerError = errorMessage.toLowerCase();
 
-    if (lowerError.includes('permission') || lowerError.includes('权限')) {
+    if (lowerError.includes('permission') || lowerError.includes('权限') || lowerError.includes('denied')) {
         return {
-            category: '权限问题',
-            suggestion: '请检查文件权限，或以管理员身份运行 VS Code'
+            category: 'Permission Denied',
+            suggestion: 'Check file permissions, or run VS Code as administrator'
         };
     }
-    if (lowerError.includes('not found') || lowerError.includes('找不到') || lowerError.includes('不存在')) {
+    if (lowerError.includes('not found') || lowerError.includes('找不到') || lowerError.includes('不存在') || lowerError.includes('does not exist')) {
         return {
-            category: '文件缺失',
-            suggestion: '请确认文件路径正确，且文件未被移动或删除'
+            category: 'File Missing',
+            suggestion: 'Verify the file path is correct and the file has not been moved or deleted'
         };
     }
     if (lowerError.includes('python') || lowerError.includes('python3')) {
         return {
-            category: '依赖缺失',
-            suggestion: '请运行"Markdown Hub: Check Dependencies"检查 Python 环境'
+            category: 'Missing Dependency',
+            suggestion: 'Run "Markdown Hub: Check Dependencies" to verify your Python environment'
         };
     }
     if (lowerError.includes('pandoc') || lowerError.includes('wkhtmltopdf')) {
         return {
-            category: '依赖缺失',
-            suggestion: '请安装必要的转换工具：pandoc、wkhtmltopdf 等'
+            category: 'Missing Dependency',
+            suggestion: 'Install the required conversion tools: pandoc, wkhtmltopdf, etc.'
         };
     }
-    if (lowerError.includes('memory') || lowerError.includes('内存')) {
+    if (lowerError.includes('memory') || lowerError.includes('内存') || lowerError.includes('out of memory')) {
         return {
-            category: '资源不足',
-            suggestion: '文件可能过大，建议分批处理或增加系统内存'
+            category: 'Insufficient Resources',
+            suggestion: 'The file may be too large — try batch processing or increase system memory'
         };
     }
     if (lowerError.includes('format') || lowerError.includes('格式')) {
         return {
-            category: '格式错误',
-            suggestion: '请检查文件格式是否正确，或尝试转换为标准 Markdown 格式'
+            category: 'Format Error',
+            suggestion: 'Check that the file format is correct, or try converting to standard Markdown'
         };
     }
 
     return {
-        category: '未知错误',
-        suggestion: '请查看详细错误信息，或尝试重启 VS Code'
+        category: 'Unknown Error',
+        suggestion: 'See the detailed error output, or try restarting VS Code'
     };
 }
 
@@ -162,15 +162,15 @@ async function handleViewHistoryCommand() {
     const history = loadHistory();
 
     if (history.length === 0) {
-        vscode.window.showInformationMessage('暂无转换历史记录');
+        vscode.window.showInformationMessage('No conversion history yet.');
         return;
     }
 
     const channel = createOutputChannel();
     channel.clear();
-    channel.appendLine('📋 Markdown Hub - 转换历史记录');
+    channel.appendLine('📋 Markdown Hub - Conversion History');
     channel.appendLine('═'.repeat(60));
-    channel.appendLine(`共 ${history.length} 条记录 (显示最近 ${Math.min(history.length, MAX_HISTORY_RECORDS)} 条)`);
+    channel.appendLine(`${history.length} record(s) total (showing the most recent ${Math.min(history.length, MAX_HISTORY_RECORDS)})`);
     channel.appendLine('═'.repeat(60));
 
     history.slice(0, 20).forEach((record, index) => {
@@ -180,15 +180,15 @@ async function handleViewHistoryCommand() {
         const timestamp = formatTimestamp(record.timestamp);
 
         channel.appendLine(`\n${index + 1}. ${statusIcon} ${fileName}`);
-        channel.appendLine(`   类型: ${getConversionTypeLabel(record.conversionType)}`);
-        channel.appendLine(`   时间: ${timestamp} | 耗时: ${duration}`);
-        channel.appendLine(`   状态: ${record.status === 'success' ? '成功' : '失败'}`);
+        channel.appendLine(`   Type: ${getConversionTypeLabel(record.conversionType)}`);
+        channel.appendLine(`   Time: ${timestamp} | Duration: ${duration}`);
+        channel.appendLine(`   Status: ${record.status === 'success' ? 'Success' : 'Failed'}`);
 
         if (record.status === 'success' && record.outputPath) {
             const outputFileName = path.basename(record.outputPath);
-            channel.appendLine(`   输出: ${outputFileName}`);
+            channel.appendLine(`   Output: ${outputFileName}`);
             if (record.fileSize) {
-                channel.appendLine(`   大小: ${formatFileSize(record.fileSize)}`);
+                channel.appendLine(`   Size: ${formatFileSize(record.fileSize)}`);
             }
         }
 
@@ -196,13 +196,13 @@ async function handleViewHistoryCommand() {
             const errorPreview = record.errorMessage.length > 50
                 ? record.errorMessage.substring(0, 47) + '...'
                 : record.errorMessage;
-            channel.appendLine(`   错误: ${errorPreview}`);
+            channel.appendLine(`   Error: ${errorPreview}`);
         }
     });
 
     if (history.length > 20) {
         channel.appendLine(`\n${'─'.repeat(60)}`);
-        channel.appendLine(`还有 ${history.length - 20} 条更早的记录...`);
+        channel.appendLine(`${history.length - 20} older record(s) not shown...`);
     }
 
     channel.show(true);
@@ -210,20 +210,20 @@ async function handleViewHistoryCommand() {
 
 async function handleClearHistoryCommand() {
     const response = await vscode.window.showWarningMessage(
-        '确定要清除所有转换历史记录吗？此操作不可撤销。',
+        'Clear all conversion history? This cannot be undone.',
         { modal: true },
-        '确定清除',
-        '取消'
+        'Clear',
+        'Cancel'
     );
 
-    if (response === '确定清除') {
+    if (response === 'Clear') {
         try {
             if (fs.existsSync(HISTORY_FILE)) {
                 fs.unlinkSync(HISTORY_FILE);
             }
-            vscode.window.showInformationMessage('历史记录已清除');
+            vscode.window.showInformationMessage('History cleared.');
         } catch (error) {
-            vscode.window.showErrorMessage('清除历史记录失败');
+            vscode.window.showErrorMessage('Failed to clear history.');
         }
     }
 }
@@ -256,7 +256,7 @@ function countFiles(dirPath: string, extensions: string[]): number {
             }
         }
     } catch {
-        // 忽略错误
+        // ignore error
     }
     return count;
 }
@@ -275,7 +275,7 @@ function getFileStats(sourcePath: string): { size: number; isLarge: boolean } {
 }
 
 /**
- * 处理所有转换命令的核心逻辑
+ * Core handler for all conversion commands.
  */
 export async function handleConvertCommand(
     resourceUri: vscode.Uri,
@@ -283,7 +283,7 @@ export async function handleConvertCommand(
     context: vscode.ExtensionContext
 ) {
     if (!resourceUri) {
-        vscode.window.showErrorMessage('无法执行转换：未选择文件或文件夹。');
+        vscode.window.showErrorMessage('Cannot convert: no file or folder selected.');
         return;
     }
 
@@ -304,21 +304,21 @@ export async function handleConvertCommand(
             ? ['.docx', '.doc', '.pptx', '.ppt', '.xlsx', '.xls']
             : ['.md', '.markdown'];
         totalFiles = countFiles(sourcePath, extensions);
-        channel.appendLine('📁 Markdown Hub - 批量转换');
+        channel.appendLine('📁 Markdown Hub - Batch Conversion');
         channel.appendLine('═'.repeat(60));
-        channel.appendLine(`📂 源目录: ${sourcePath}`);
-        channel.appendLine(`📋 转换类型: ${getConversionTypeLabel(conversionType)}`);
-        channel.appendLine(`📦 待处理: ${totalFiles} 个文件`);
+        channel.appendLine(`📂 Source dir: ${sourcePath}`);
+        channel.appendLine(`📋 Type: ${getConversionTypeLabel(conversionType)}`);
+        channel.appendLine(`📦 Pending: ${totalFiles} file(s)`);
         channel.appendLine('═'.repeat(60) + '\n');
     } else {
-        channel.appendLine('🔄 Markdown Hub - 转换开始');
+        channel.appendLine('🔄 Markdown Hub - Conversion Started');
         channel.appendLine('═'.repeat(60));
-        channel.appendLine(`📄 文件: ${sourceFileName}`);
-        channel.appendLine(`📋 类型: ${getConversionTypeLabel(conversionType)}`);
-        channel.appendLine(`💾 大小: ${formatFileSize(fileStats.size)}`);
+        channel.appendLine(`📄 File: ${sourceFileName}`);
+        channel.appendLine(`📋 Type: ${getConversionTypeLabel(conversionType)}`);
+        channel.appendLine(`💾 Size: ${formatFileSize(fileStats.size)}`);
 
         if (fileStats.isLarge) {
-            channel.appendLine(`⚠️  提示: 大文件转换可能需要较长时间，请耐心等待...\n`);
+            channel.appendLine(`⚠️  Note: large file conversion may take a while, please wait...\n`);
         } else {
             channel.appendLine('');
         }
@@ -328,7 +328,7 @@ export async function handleConvertCommand(
 
     vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `正在转换 ${sourceFileName}`,
+        title: `Converting ${sourceFileName}`,
         cancellable: false
     }, async (progress) => {
         try {
@@ -350,7 +350,7 @@ export async function handleConvertCommand(
                     email: config.get<string>('email', ''),
                     mobilephone: config.get<string>('mobilephone', ''),
                     promoteHeadings: config.get<boolean>('promoteHeadings', true),
-                    // 代码块高亮主题（pandoc --highlight-style），仅作用于 DOCX/PDF/HTML
+                    // Code block highlight theme (pandoc --highlight-style), only affects DOCX/PDF/HTML
                     codeHighlightTheme: config.get<string>('codeHighlightTheme', 'pygments')
                 };
                 conversionOptions = { ...sharedOptions };
@@ -397,7 +397,7 @@ export async function handleConvertCommand(
                 (message: string, percentage?: number, stats?: ConversionStats) => {
                     if (stats && stats.totalFiles && stats.totalFiles > 1) {
                         currentFile = stats.currentFile || 0;
-                        const progressMsg = `正在处理 ${currentFile}/${stats.totalFiles} 个文件`;
+                        const progressMsg = `Processing ${currentFile}/${stats.totalFiles}`;
                         channel.appendLine(`📊 ${progressMsg}: ${message}`);
                         progress.report({
                             message: progressMsg,
@@ -426,26 +426,26 @@ export async function handleConvertCommand(
                 if (outputFiles.length > 0) {
                     channel.appendLine('');
                     channel.appendLine('═'.repeat(60));
-                    channel.appendLine('✅ 转换成功！');
+                    channel.appendLine('✅ Conversion succeeded!');
                     channel.appendLine('═'.repeat(60));
-                    channel.appendLine(`⏱️  耗时: ${formatDuration(duration)}`);
+                    channel.appendLine(`⏱️  Duration: ${formatDuration(duration)}`);
 
                     if (isDir) {
-                        channel.appendLine(`📁 已处理: ${totalFiles} 个文件`);
+                        channel.appendLine(`📁 Processed: ${totalFiles} file(s)`);
                     }
 
                     const outputFileName = path.basename(outputFiles[0]);
                     const outputFilePath = outputFiles.length === 1
                         ? outputFiles[0]
-                        : path.join(outputDir, `转换结果 (${outputFiles.length}个文件)`);
+                        : path.join(outputDir, `conversion-result (${outputFiles.length} files)`);
 
-                    channel.appendLine(`📄 输出: ${outputFileName}`);
+                    channel.appendLine(`📄 Output: ${outputFileName}`);
                     if (outputFiles.length === 1) {
                         try {
                             const outputStats = fs.statSync(outputFiles[0]);
-                            channel.appendLine(`💾 大小: ${formatFileSize(outputStats.size)}`);
+                            channel.appendLine(`💾 Size: ${formatFileSize(outputStats.size)}`);
                         } catch {
-                            // 忽略
+                            // ignore
                         }
                     }
 
@@ -461,17 +461,17 @@ export async function handleConvertCommand(
                     });
 
                     const message = outputFiles.length === 1
-                        ? `✅ 转换完成！耗时 ${formatDuration(duration)}，输出：${outputFileName}`
-                        : `✅ 成功转换 ${outputFiles.length} 个文件！耗时 ${formatDuration(duration)}`;
+                        ? `✅ Conversion complete! (${formatDuration(duration)}) — ${outputFileName}`
+                        : `✅ Converted ${outputFiles.length} file(s)! (${formatDuration(duration)})`;
 
-                    vscode.window.showInformationMessage(message, '打开文件夹').then(selection => {
-                        if (selection === '打开文件夹') {
+                    vscode.window.showInformationMessage(message, 'Reveal in Folder').then(selection => {
+                        if (selection === 'Reveal in Folder') {
                             vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(outputDir));
                         }
                     });
                 }
             } else {
-                throw new Error(result.error || '转换失败，发生未知错误');
+                throw new Error(result.error || 'Conversion failed: unknown error');
             }
         } catch (error: any) {
             const endTime = Date.now();
@@ -481,12 +481,12 @@ export async function handleConvertCommand(
 
             channel.appendLine('');
             channel.appendLine('═'.repeat(60));
-            channel.appendLine('❌ 转换失败');
+            channel.appendLine('❌ Conversion failed');
             channel.appendLine('═'.repeat(60));
-            channel.appendLine(`⚠️  错误类型: ${errorInfo.category}`);
-            channel.appendLine(`💡 建议: ${errorInfo.suggestion}`);
-            channel.appendLine(`\n📋 详细错误:\n   ${errorMessage}`);
-            channel.appendLine(`⏱️  已耗时: ${formatDuration(duration)}`);
+            channel.appendLine(`⚠️  Error type: ${errorInfo.category}`);
+            channel.appendLine(`💡 Suggestion: ${errorInfo.suggestion}`);
+            channel.appendLine(`\n📋 Detailed error:\n   ${errorMessage}`);
+            channel.appendLine(`⏱️  Elapsed: ${formatDuration(duration)}`);
 
             addHistoryRecord({
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -498,9 +498,9 @@ export async function handleConvertCommand(
                 errorMessage
             });
 
-            const fullErrorMessage = `${errorInfo.category}：${errorMessage}`;
-            vscode.window.showErrorMessage(fullErrorMessage, '查看详情').then(selection => {
-                if (selection === '查看详情') {
+            const fullErrorMessage = `${errorInfo.category}: ${errorMessage}`;
+            vscode.window.showErrorMessage(fullErrorMessage, 'View Details').then(selection => {
+                if (selection === 'View Details') {
                     channel.show(true);
                 }
             });

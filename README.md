@@ -143,7 +143,7 @@ Contributions are welcome! See [CONTRIBUTING.md](./.github/CONTRIBUTING.md) for 
 
 ## 👨‍💻 Author
 
-**余文锋 (Yu Wenfeng)** · 📧 909188787@qq.com
+**Yu Wenfeng** · 📧 909188787@qq.com
 
 ## 📄 License
 

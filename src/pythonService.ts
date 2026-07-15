@@ -41,19 +41,19 @@ interface ConversionStats {
 type PythonOutput = ProgressInfo | ResultInfo;
 
 const STAGE_LABELS: Record<string, string> = {
-    'parsing': '正在解析文件...',
-    'extracting': '正在提取文本...',
-    'processing_images': '正在处理图片...',
-    'converting': '正在转换格式...',
-    'rendering': '正在渲染内容...',
-    'generating': '正在生成文件...',
-    'saving': '正在保存文件...',
-    'complete': '转换完成',
-    'error': '处理出错',
-    'preparing': '正在准备...',
-    'analyzing': '正在分析内容...',
-    'optimizing': '正在优化输出...',
-    'exporting': '正在导出...'
+    'parsing': 'Parsing file...',
+    'extracting': 'Extracting text...',
+    'processing_images': 'Processing images...',
+    'converting': 'Converting format...',
+    'rendering': 'Rendering content...',
+    'generating': 'Generating file...',
+    'saving': 'Saving file...',
+    'complete': 'Conversion complete',
+    'error': 'Processing error',
+    'preparing': 'Preparing...',
+    'analyzing': 'Analyzing content...',
+    'optimizing': 'Optimizing output...',
+    'exporting': 'Exporting...'
 };
 
 function getStageLabel(stage: string): string {
@@ -146,7 +146,7 @@ export function executePythonScript(
             }
         }
 
-        console.log(`执行命令: ${pythonPath} ${args.join(' ')}`);
+        console.log(`Executing: ${pythonPath} ${args.join(' ')}`);
 
         const pyProcess = spawn(pythonPath, args);
 
@@ -196,17 +196,17 @@ export function executePythonScript(
                                 outputFiles: output.outputFiles
                             });
                         } else {
-                            reject(new Error(output.error || 'Python 脚本报告了一个未知错误'));
+                            reject(new Error(output.error || 'Python script reported an unknown error'));
                         }
                     }
                 } catch (e) {
-                    console.log('非JSON输出:', line);
+                    console.log('Non-JSON output:', line);
                 }
             });
         });
 
         pyProcess.stderr.on('data', (data) => {
-            console.error(`Python错误输出: ${data}`);
+            console.error(`Python stderr: ${data}`);
         });
 
         pyProcess.on('close', (code) => {
@@ -215,20 +215,20 @@ export function executePythonScript(
                     const decodedLine = Buffer.from(stdoutBuffer.trim(), 'base64').toString('utf8');
                     const finalOutput = JSON.parse(decodedLine) as PythonOutput;
                     if (finalOutput.type === 'result' && !finalOutput.success) {
-                        const errorMessage = finalOutput.error || `Python 脚本异常退出，代码：${code}`;
+                        const errorMessage = finalOutput.error || `Python script exited unexpectedly with code ${code}`;
                         reject(new Error(errorMessage));
                         return;
                     }
                 } catch (e) {
-                    reject(new Error(`Python 脚本异常退出，代码：${code}。输出：${stdoutBuffer.trim()}`));
+                    reject(new Error(`Python script exited unexpectedly with code ${code}. Output: ${stdoutBuffer.trim()}`));
                 }
             } else if (code !== 0) {
-                 reject(new Error(`Python 脚本异常退出，代码：${code}`));
+                 reject(new Error(`Python script exited unexpectedly with code ${code}`));
             }
         });
 
         pyProcess.on('error', (err) => {
-            reject(new Error(`无法启动 Python 脚本：${err.message}`));
+            reject(new Error(`Failed to start Python script: ${err.message}`));
         });
     });
 }

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Office & Docs Converter - 命令行接口
-作为 VS Code 扩展前端调用的统一入口，使用工厂模式选择并实例化正确的转换器
+Office & Docs Converter - CLI entry point.
+Unified entry for the VS Code extension frontend; uses a factory pattern
+to select and instantiate the correct converter.
 """
 
 import sys
 import os
 
-# ── 最先注入 vendor 路径，确保内置库优先可用 ──
+# Inject the vendor path first so bundled libraries take precedence.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'vendor'))
 
 import argparse
@@ -16,15 +17,15 @@ import logging
 import base64
 from typing import Dict, Type
 
-# 添加当前目录到路径，以便导入 converters 包
+# Add the current directory to the path so the converters package is importable.
 sys.path.insert(0, os.path.dirname(__file__))
 
 from converters.base_converter import BaseConverter
-# 从 __init__.py 导入注册表
+# Import the converter registry from __init__.py
 from converters import CONVERTER_REGISTRY
 
 def setup_logging():
-    """配置日志系统"""
+    """Configure logging."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -34,62 +35,62 @@ def setup_logging():
 def get_converter(conversion_type: str, output_dir: str, **kwargs) -> BaseConverter:
     """Converter factory"""
     if conversion_type not in CONVERTER_REGISTRY:
-        raise ValueError(f"不支持的转换类型: {conversion_type}")
-    
+        raise ValueError(f"Unsupported conversion type: {conversion_type}")
+
     converter_class = CONVERTER_REGISTRY[conversion_type]
-    
-    # 为 MdToOfficeConverter 传递输出格式
+
+    # Pass the output format to MdToOfficeConverter.
     if conversion_type.startswith('md-to-'):
-        output_format = conversion_type.split('-')[-1]  # 提取 docx/pdf/html
+        output_format = conversion_type.split('-')[-1]  # extract docx/pdf/html
         kwargs['output_format'] = output_format
-    
+
     return converter_class(output_dir, **kwargs)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Markdown Hub - 文档转换工具",
+        description="Markdown Hub - document conversion tool",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('--conversion-type', required=True, 
                        choices=list(CONVERTER_REGISTRY.keys()),
-                       help='转换类型')
-    parser.add_argument('--input-path', required=True, 
-                       help='输入文件或目录路径')
-    parser.add_argument('--output-dir', required=True, 
-                       help='输出目录')
-    parser.add_argument('--docx-template-path', 
-                       help='可选的 DOCX 模板文件路径')
-    parser.add_argument('--pptx-template-path', 
-                       help='可选的 PPTX 模板文件路径')
-    parser.add_argument('--project-name', help='项目名称 (可选)')
-    parser.add_argument('--author', help='作者名称 (可选)')
-    parser.add_argument('--mobilephone', help='联系电话 (可选)')
-    parser.add_argument('--email', help='电子邮箱 (可选)')
+                       help='Conversion type')
+    parser.add_argument('--input-path', required=True,
+                       help='Input file or directory path')
+    parser.add_argument('--output-dir', required=True,
+                       help='Output directory')
+    parser.add_argument('--docx-template-path',
+                       help='Optional DOCX template file path')
+    parser.add_argument('--pptx-template-path',
+                       help='Optional PPTX template file path')
+    parser.add_argument('--project-name', help='Project name (optional)')
+    parser.add_argument('--author', help='Author name (optional)')
+    parser.add_argument('--mobilephone', help='Contact phone (optional)')
+    parser.add_argument('--email', help='Email address (optional)')
     parser.add_argument('--promote-headings', action='store_true',
-                       help='将Markdown标题提升一级（例如## -> 1级标题）')
+                       help='Promote Markdown heading levels by one (e.g. ## -> Heading 1)')
     parser.add_argument('--code-highlight-theme', default='pygments',
-                       help='pandoc 代码块高亮主题（pygments/tango/espresso/zenburn/kate/monochrome/breezedark/haddock/off，默认 pygments）')
+                       help='pandoc code block highlight theme (pygments/tango/espresso/zenburn/kate/monochrome/breezedark/haddock/off, default: pygments)')
     parser.add_argument('--verbose', '-v', action='store_true',
-                       help='启用详细日志输出')
+                       help='Enable verbose log output')
     parser.add_argument('--poppler-path',
-                       help='Poppler工具的路径 (用于PDF OCR)')
+                       help='Path to Poppler tools (for PDF OCR)')
     parser.add_argument('--tesseract-cmd',
-                       help='Tesseract-OCR的命令或路径 (用于PDF OCR)')
-    # SVG转换相关参数
+                       help='Tesseract-OCR command or path (for PDF OCR)')
+    # SVG conversion parameters
     parser.add_argument('--svg-dpi', type=int, default=300,
-                       help='SVG转PNG的DPI设置 (默认: 300)')
+                       help='DPI for SVG to PNG (default: 300)')
     parser.add_argument('--svg-output-width', type=int, default=800,
-                       help='SVG转PNG的输出宽度 (默认: 800px)')
+                       help='Output width for SVG to PNG (default: 800px)')
     
     args = parser.parse_args()
     
-    # 设置日志级别
+    # Set log level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     else:
         setup_logging()
 
-    # 创建进度报告函数
+    # Build the progress reporter
     def report_progress(stage: str, percentage: int = None):
         progress = {
             "type": "progress",
@@ -97,22 +98,21 @@ def main():
         }
         if percentage is not None:
             progress["percentage"] = percentage
-        
-        # Base64编码以确保UTF-8内容安全通过stdout
+
+        # Base64-encode so UTF-8 content passes through stdout safely.
         json_str = json.dumps(progress, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
 
     try:
-        # 报告开始转换
-        report_progress("开始转换...")
+        report_progress("preparing")
 
-        # 获取转换器类
+        # Resolve the converter class
         converter_class = CONVERTER_REGISTRY.get(args.conversion_type)
         if not converter_class:
-            raise ValueError(f"不支持的转换类型: {args.conversion_type}")
+            raise ValueError(f"Unsupported conversion type: {args.conversion_type}")
 
-        # 准备传递给转换器的参数
+        # Build kwargs for the converter
         converter_kwargs = {
             'output_dir': args.output_dir,
             'docx_template_path': args.docx_template_path,
@@ -125,49 +125,49 @@ def main():
             'code_highlight_theme': args.code_highlight_theme,
             'poppler_path': args.poppler_path,
             'tesseract_cmd': args.tesseract_cmd,
-            # SVG转换参数
+            # SVG conversion parameters
             'svg_dpi': args.svg_dpi,
             'svg_output_width': args.svg_output_width
         }
-        
-        # 从 conversion_type 中提取并传递 output_format
+
+        # Extract output_format from conversion_type and pass it through.
         if args.conversion_type.startswith('md-to-'):
             output_format = args.conversion_type.split('-')[-1]
             converter_kwargs['output_format'] = output_format
 
-        # 创建转换器实例
+        # Instantiate the converter
         converter = converter_class(**converter_kwargs)
 
-        # 报告准备阶段完成
-        report_progress("正在分析文件...", 25)
+        # Preparation done
+        report_progress("analyzing", 25)
 
-        # 执行转换
-        report_progress("正在转换...", 50)
+        # Run the conversion
+        report_progress("converting", 50)
         output_files = converter.convert(args.input_path)
         success = len(output_files) > 0
 
-        # 报告完成
-        report_progress("转换完成", 100)
+        # Report completion
+        report_progress("complete", 100)
 
-        # 返回最终结果
+        # Build the final result
         result = {
             "type": "result",
             "success": success,
             "outputFiles": output_files
         }
-        # Base64编码
+        # Base64-encode
         json_str = json.dumps(result, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
 
     except Exception as e:
-        # 报告错误
+        # Report the error
         error_result = {
             "type": "result",
             "success": False,
             "error": str(e)
         }
-        # Base64编码
+        # Base64-encode
         json_str = json.dumps(error_result, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
