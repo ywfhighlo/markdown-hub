@@ -19,6 +19,11 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - Progress-bar labels now translate correctly (stage keys aligned between frontend and backend)
 - Clearer, more accurate error messages for missing dependencies (Pandoc, Word/LibreOffice, PyMuPDF)
 
+### Added
+- Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text
+- HTML → Markdown conversion (right-click any `.html` or `.htm` file)
+- DOCX → Markdown now preserves headings, bold/italic, tables, and lists (was plain text only)
+
 ## [0.3.5] - 2025-09-30
 
 ### Fixed

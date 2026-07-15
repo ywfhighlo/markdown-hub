@@ -377,6 +377,11 @@ _INSTALLABLE_HEAVY_LIBS = {
         "import_name": "fitz",
         "hint": "PDF 智能转换所需",
     },
+    "python-docx": {
+        "pip_name": "python-docx",
+        "import_name": "docx",
+        "hint": "DOCX → Markdown 结构化提取所需（pip 包名 python-docx，导入名 docx）",
+    },
 }
 
 

@@ -46,13 +46,13 @@ _HIGHLIGHT_OFF = {'', 'off', 'none', 'disable'}
 # ─────────────────────────────────────────
 
 def _split_table_row(row: str) -> List[str]:
-    """按未转义的 | 切分表格行，支持 \\| 转义语义。
+    r"""Split a table row on unescaped pipes, respecting \| escape semantics.
 
-    - \\\\| → \\\\（字面反斜杠，不是分隔符）
-    - \\|   → |（字面 pipe，不是分隔符）
+    - \\\\| → \\\\ (literal backslash, not a separator)
+    - \\|   → | (literal pipe, not a separator)
 
-    返回 cell 列表，cell 内 \| 已还原为字面 |，
-    首尾两端由 | 引入的空 cell 自动剔除。
+    Returns the list of cells; the leading/trailing empty cell introduced
+    by the outer pipes is stripped automatically.
     """
     cells: List[str] = []
     current: List[str] = []
@@ -1507,20 +1507,22 @@ class MdToOfficeConverter(BaseConverter):
         return ['--highlight-style=pygments']
 
     def _process_enhanced_markdown(self, content: str) -> str:
-        """
-        增强Markdown语法支持的主入口
-        处理以下语法：
-        - 数学公式 ($...$, $$...$$, \[...\], \\begin{equation}...\\end{equation})
-        - 任务列表 (- [ ], - [x])
-        - 脚注 ([^1])
-        - 定义列表 (术语: 定义)
-        - 缩写词 (<abbr>)
-        - 删除线 (~~text~~)
-        - 上下标 (^上标^, ~下标~)
-        - 水平线 (---, ***, ___)
-        - 键盘按键 (<kbd>key</kbd>)
+        r"""
+        Enhanced Markdown syntax preprocessor.
 
-        注：代码块高亮由 pandoc --highlight-style 处理，不再在本函数中预处理。
+        Handles:
+        - Math ($...$, $$...$$, \[...\], \(...\), \begin{equation}...)
+        - Task lists (- [ ], - [x])
+        - Footnotes ([^1])
+        - Definition lists (term: definition)
+        - Abbreviations (<abbr>)
+        - Strikethrough (~~text~~)
+        - Superscript/subscript (^sup^, ~sub~)
+        - Horizontal rules (---, ***, ___)
+        - Keyboard keys (<kbd>key</kbd>)
+
+        Note: code block highlighting is handled by pandoc --highlight-style,
+        not in this preprocessor.
         """
 
         # 1. 处理数学公式
@@ -1553,135 +1555,20 @@ class MdToOfficeConverter(BaseConverter):
         return content
     
     def _process_math_expressions(self, content: str) -> str:
-        """处理数学公式支持，支持更多LaTeX格式"""
+        """Normalize math syntax for pandoc.
 
-        # 处理块级公式 $$...$$ 或 \[...\] 或 \begin{equation}...\end{equation}
-        def replace_block_math(match):
-            math_content = match.group(1).strip()
-            # 将公式转换为带标签的格式，便于Pandoc识别
-            return f"\n\n<div class=\"math-block\">[公式块] {math_content}</div>\n\n"
+        pandoc's markdown reader natively understands $...$ and $$...$$,
+        and renders them as OMML in DOCX and MathJax/LaTeX in HTML.
+        However, \\[...\\] and \\(...\\) display/inline math are NOT reliably
+        parsed by pandoc's pipe-table-aware reader, so we normalize them to
+        dollar syntax. All other LaTeX commands are left untouched — pandoc
+        handles \\frac, \\alpha, etc. natively.
+        """
+        # Display math: \[...\]  →  $$...$$
+        content = re.sub(r'\\\[\s*(.*?)\s*\\\]', r'$$\1$$', content, flags=re.DOTALL)
 
-        # 匹配 $$...$$ (支持跨行)
-        content = re.sub(r'\$\$\s*(.*?)\s*\$\$', replace_block_math, content, flags=re.DOTALL)
-
-        # 匹配 \[...\] 块级公式
-        content = re.sub(r'\\\[\s*(.*?)\s*\\]', replace_block_math, content, flags=re.DOTALL)
-
-        # 匹配 \begin{equation}...\end{equation} 环境
-        def replace_equation_env(match):
-            math_content = match.group(1).strip()
-            # 提取标签（如果有）
-            label_match = re.search(r'\\label\{([^}]+)\}', math_content)
-            label = f" (公式编号: {label_match.group(1)})" if label_match else ""
-            # 移除label，只保留公式内容
-            math_content = re.sub(r'\\label\{[^}]+\}', '', math_content).strip()
-            return f"\n\n<div class=\"math-block\">[公式环境{label}] {math_content}</div>\n\n"
-
-        content = re.sub(
-            r'\\begin\{equation\}\s*(.*?)\s*\\end\{equation\}',
-            replace_equation_env,
-            content,
-            flags=re.DOTALL
-        )
-
-        # 匹配 \begin{align}...\end{align} 环境（多行对齐）
-        def replace_align_env(match):
-            math_content = match.group(1).strip()
-            # 处理换行和行号标记 \\
-            math_content = re.sub(r'\\\\', '\n', math_content)
-            return f"\n\n<div class=\"math-block\">[多行公式] {math_content}</div>\n\n"
-
-        content = re.sub(
-            r'\\begin\{align(?:ed|at|gather)\*?\}\s*(.*?)\s*\\end\{align(?:ed|at|gather)\*?\}',
-            replace_align_env,
-            content,
-            flags=re.DOTALL
-        )
-
-        # 处理行内公式 $...$ 或 \(...\)
-
-        def replace_inline_math(match):
-            math_content = match.group(1).strip()
-            return f" [公式: {math_content}] "
-
-        # 匹配 $...$
-        content = re.sub(r'\$(.*?)\$', replace_inline_math, content, flags=re.DOTALL)
-
-        # 匹配 \(...\)
-        content = re.sub(r'\\\(\s*(.*?)\s*\\\)', replace_inline_math, content, flags=re.DOTALL)
-
-        # 处理常见的LaTeX数学符号和命令
-        # 将常见的数学命令转换为更易读的格式
-
-        # 处理分数 \frac{num}{den}
-        content = re.sub(
-            r'\\frac\{([^}]+)\}\{([^}]+)\}',
-            r'(\1)/(\2)',
-            content
-        )
-
-        # 处理上标 ^...
-        content = re.sub(
-            r'\^\{?([^}\s]+)\}?',
-            r'^\1',
-            content
-        )
-
-        # 处理下标 _...
-        content = re.sub(
-            r'_\{?([^}\s]+)\}?',
-            r'_\1',
-            content
-        )
-
-        # 处理希腊字母（常见的）
-        greek_map = {
-            r'\\alpha': 'α', r'\\beta': 'β', r'\\gamma': 'γ', r'\\delta': 'δ',
-            r'\\epsilon': 'ε', r'\\zeta': 'ζ', r'\\eta': 'η', r'\\theta': 'θ',
-            r'\\lambda': 'λ', r'\\mu': 'μ', r'\\pi': 'π', r'\\rho': 'ρ',
-            r'\\sigma': 'σ', r'\\tau': 'τ', r'\\phi': 'φ', r'\\psi': 'ψ',
-            r'\\omega': 'ω', r'\\Gamma': 'Γ', r'\\Delta': 'Δ', r'\\Theta': 'Θ',
-            r'\\Lambda': 'Λ', r'\\Xi': 'Ξ', r'\\Pi': 'Π', r'\\Sigma': 'Σ',
-            r'\\Upsilon': 'Υ', r'\\Phi': 'Φ', r'\\Psi': 'Ψ', r'\\Omega': 'Ω'
-        }
-
-        for latex, greek in greek_map.items():
-            content = content.replace(latex, greek)
-
-        # 处理数学运算符
-        math_ops = {
-            r'\\times': '×', r'\\div': '÷', r'\\pm': '±', r'\\mp': '∓',
-            r'\\le': '≤', r'\\ge': '≥', r'\\neq': '≠', r'\\approx': '≈',
-            r'\\equiv': '≡', r'\\infty': '∞', r'\\partial': '∂',
-            r'\\nabla': '∇', r'\\sum': '∑', r'\\prod': '∏', r'\\int': '∫',
-            r'\\sqrt': '√', r'\\overline': '¯', r'\\vec': '→',
-            r'\\hat': '^', r'\\bar': '¯', r'\\dot': '˙', r'\\ddot': '¨'
-        }
-
-        for latex, symbol in math_ops.items():
-            content = content.replace(latex, symbol)
-
-        # 处理逻辑符号
-        logic_ops = {
-            r'\\forall': '∀', r'\\exists': '∃', r'\\rightarrow': '→',
-            r'\\leftarrow': '←', r'\\leftrightarrow': '↔', r'\\Rightarrow': '⇒',
-            r'\\Leftarrow': '⇐', r'\\Leftrightarrow': '⇔', r'\\land': '∧',
-            r'\\lor': '∨', r'\\lnot': '¬', r'\\oplus': '⊕', r'\\otimes': '⊗'
-        }
-
-        for latex, symbol in logic_ops.items():
-            content = content.replace(latex, symbol)
-
-        # 处理集合符号
-        set_ops = {
-            r'\\in': '∈', r'\\notin': '∉', r'\\ni': '∋', r'\\subset': '⊂',
-            r'\\subseteq': '⊆', r'\\cup': '∪', r'\\cap': '∩', r'\\emptyset': '∅',
-            r'\\mathbb\{N\}': 'ℕ', r'\\mathbb\{Z\}': 'ℤ', r'\\mathbb\{Q\}': 'ℚ',
-            r'\\mathbb\{R\}': 'ℝ', r'\\mathbb\{C\}': 'ℂ'
-        }
-
-        for latex, symbol in set_ops.items():
-            content = content.replace(latex, symbol)
+        # Inline math: \(...\)  →  $...$
+        content = re.sub(r'\\\(\s*(.*?)\s*\\\)', r'$\1$', content, flags=re.DOTALL)
 
         return content
     
@@ -2219,8 +2106,10 @@ class MdToOfficeConverter(BaseConverter):
             resource_path_arg = '--resource-path=' + str(input_path.parent)
             pandoc_bin = resolve_command("pandoc") or 'pandoc'
             cmd = [pandoc_bin, str(processed_md_file), '--from', 'markdown+smart', '--to', 'html', resource_path_arg]
-            # 代码块高亮（pandoc --highlight-style / --no-highlight）
+            # Code block highlighting (pandoc --highlight-style / --no-highlight)
             cmd.extend(self._highlight_style_args())
+            # Math rendering: MathJax for HTML output (DOCX uses native OMML by default)
+            cmd.append('--mathjax')
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
             
@@ -2246,6 +2135,16 @@ class MdToOfficeConverter(BaseConverter):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{title}</title>
     <style>{css}</style>
+    <script>
+        MathJax = {{
+            tex: {{
+                inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+                displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]
+            }},
+            svg: {{ fontCache: 'global' }}
+        }};
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
     <div class="container">

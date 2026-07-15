@@ -112,6 +112,10 @@
         "title": "Batch: All Files → Markdown"
       },
       {
+        "command": "markdown-hub.htmlToMd",
+        "title": "Convert HTML to Markdown"
+      },
+      {
         "command": "markdown-hub.batchDiagramToPng",
         "title": "Batch: Diagrams → PNG"
       },
@@ -162,6 +166,11 @@
         {
           "when": "resourceExtname == .docx || resourceExtname == .xlsx || resourceExtname == .ppt || resourceExtname == .pdf",
           "command": "markdown-hub.officeToMd",
+          "group": "2_conversion@1"
+        },
+        {
+          "when": "resourceExtname == .html || resourceExtname == .htm",
+          "command": "markdown-hub.htmlToMd",
           "group": "2_conversion@1"
         },
         {

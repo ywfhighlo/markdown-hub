@@ -258,7 +258,7 @@ class OfficeToMdConverter(BaseConverter):
         type_to_check = {
             # PDF 智能路径是 PyMuPDF，但允许 pypdf 兜底（需 pypdf+pytesseract+pdf2image 三件套）
             'pdf':         ('PyMuPDF', 'pypdf', 'pytesseract', 'pdf2image'),
-            'word':        ('docx2txt',),
+            'word':        ('python-docx', 'docx2txt'),
             'excel':       ('pandas', 'tabulate'),
             'powerpoint':  ('python-pptx',),
             'html':        ('html2text',),
@@ -1196,18 +1196,137 @@ class OfficeToMdConverter(BaseConverter):
     # ─────────────────────────────────────────────
 
     def _extract_text_from_word(self, docx_path: Path) -> str:
+        """Extract structured Markdown from a DOCX file.
+
+        Uses python-docx to walk the document body in order, preserving
+        headings, lists, tables, and inline formatting (bold/italic/code).
+        Falls back to docx2txt (plain text only) if python-docx is unavailable.
+        """
         _resolve_dependencies()
+
+        # Prefer python-docx for structured extraction
+        if lib_available("python-docx"):
+            try:
+                return self._docx_to_markdown_structured(docx_path)
+            except Exception as e:
+                self.logger.warning(f"python-docx extraction failed, falling back to docx2txt: {e}")
+
+        # Fallback: docx2txt (plain text, no structure)
         if docx2txt is None:
-            self.logger.error("docx2txt库未安装，无法处理Word文件")
-            return "## Word内容提取失败\n\n需安装docx2txt库: pip install docx2txt"
+            self.logger.error("Neither python-docx nor docx2txt is installed; cannot process Word files")
+            return "## Word content extraction failed\n\nInstall one of: pip install python-docx  (or)  pip install docx2txt"
 
         try:
-            text = docx2txt.process(docx_path)
-            return text
-
+            return docx2txt.process(docx_path)
         except Exception as e:
-            self.logger.error(f"处理Word文档 {docx_path} 时出错: {str(e)}")
+            self.logger.error(f"Failed to process Word document {docx_path}: {e}")
             return ""
+
+    def _docx_to_markdown_structured(self, docx_path: Path) -> str:
+        """Walk a DOCX body in document order, emitting Markdown."""
+        from docx import Document
+        from docx.oxml.ns import qn
+
+        doc = Document(str(docx_path))
+        lines: List[str] = []
+
+        # Map Word heading style names to Markdown levels
+        HEADING_STYLES = {
+            'Heading 1': 1, 'Heading 2': 2, 'Heading 3': 3,
+            'Heading 4': 4, 'Heading 5': 5, 'Heading 6': 6,
+            'Title': 1,
+        }
+
+        def para_to_md(para):
+            """Convert a paragraph to a Markdown line, handling style + inline runs."""
+            style_name = para.style.name if para.style else ''
+
+            # Heading
+            if style_name in HEADING_STYLES:
+                level = HEADING_STYLES[style_name]
+                text = para.text.strip()
+                if text:
+                    return f"{'#' * level} {text}"
+                return None
+
+            # List items: Word uses "List Bullet" / "List Number" styles
+            text = para.text.strip()
+            if not text:
+                return None
+
+            if style_name.startswith('List Bullet'):
+                return f"- {text}"
+            if style_name.startswith('List Number'):
+                return f"1. {text}"
+
+            # Quote
+            if style_name == 'Quote' or style_name == 'Intense Quote':
+                return f"> {text}"
+
+            # Inline formatting from runs
+            inline = self._runs_to_inline_md(para.runs)
+            return inline if inline else text
+
+        def table_to_md(table):
+            """Convert a Word table to a GFM pipe table."""
+            rows = []
+            for row in table.rows:
+                cells = []
+                for cell in row.cells:
+                    cell_text = cell.text.strip().replace('\n', '<br>').replace('|', '\\|')
+                    cells.append(cell_text)
+                rows.append(cells)
+            if not rows:
+                return ''
+            max_cols = max(len(r) for r in rows)
+            for r in rows:
+                while len(r) < max_cols:
+                    r.append('')
+            out = []
+            out.append('| ' + ' | '.join(rows[0]) + ' |')
+            out.append('| ' + ' | '.join(['---'] * max_cols) + ' |')
+            for r in rows[1:]:
+                out.append('| ' + ' | '.join(r) + ' |')
+            return '\n'.join(out)
+
+        # Walk body children in document order (paragraphs + tables interleaved)
+        body = doc.element.body
+        para_idx = 0
+        table_idx = 0
+        for child in body.iterchildren():
+            tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+            if tag == 'p':
+                if para_idx < len(doc.paragraphs):
+                    md_line = para_to_md(doc.paragraphs[para_idx])
+                    if md_line is not None:
+                        lines.append(md_line)
+                    para_idx += 1
+            elif tag == 'tbl':
+                if table_idx < len(doc.tables):
+                    md_table = table_to_md(doc.tables[table_idx])
+                    if md_table:
+                        lines.append('')
+                        lines.append(md_table)
+                        lines.append('')
+                    table_idx += 1
+
+        return '\n\n'.join(lines)
+
+    def _runs_to_inline_md(self, runs) -> str:
+        """Convert a list of python-docx Runs to inline Markdown (bold/italic/code)."""
+        parts = []
+        for run in runs:
+            text = run.text
+            if not text:
+                continue
+            if run.font.bold and run.font.italic:
+                text = f'***{text}***'
+            elif run.font.bold:
+                text = f'**{text}**'
+            elif run.font.italic:
+                text = f'*{text}*'
+            parts.append(text)
+        return ''.join(parts)
 
     def _extract_text_from_excel(self, excel_path: Path) -> str:
         _resolve_dependencies()

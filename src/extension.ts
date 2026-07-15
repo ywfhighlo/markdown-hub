@@ -112,8 +112,11 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('markdown-hub.mdToPptx', 
             (uri: vscode.Uri) => handleConvertCommand(uri, 'md-to-pptx', context)),
         
-        vscode.commands.registerCommand('markdown-hub.officeToMd', 
+        vscode.commands.registerCommand('markdown-hub.officeToMd',
             (uri: vscode.Uri) => handleConvertCommand(uri, 'office-to-md', context)),
+
+        vscode.commands.registerCommand('markdown-hub.htmlToMd',
+            (uri: vscode.Uri) => handleConvertCommand(uri, 'html-to-md', context)),
         
         vscode.commands.registerCommand('markdown-hub.diagramToPng', 
             (uri: vscode.Uri) => handleConvertCommand(uri, 'diagram-to-png', context)),

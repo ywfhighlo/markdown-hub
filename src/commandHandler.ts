@@ -5,7 +5,7 @@ import * as os from 'os';
 import { executePythonScript } from './pythonService';
 import { checkDependencies, checkDependenciesWithQuickPick, DependencyStatus } from './dependencyChecker';
 
-type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png';
+type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
 
 interface HistoryRecord {
     id: string;
@@ -102,7 +102,8 @@ function getConversionTypeLabel(type: ConversionType): string {
         'md-to-html': 'Markdown → HTML',
         'md-to-pptx': 'Markdown → PPT',
         'office-to-md': 'Office → Markdown',
-        'diagram-to-png': 'Diagram → PNG'
+        'diagram-to-png': 'Diagram → PNG',
+        'html-to-md': 'HTML → Markdown'
     };
     return labels[type] || type;
 }

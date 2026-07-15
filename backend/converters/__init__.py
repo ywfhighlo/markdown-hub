@@ -34,4 +34,5 @@ CONVERTER_REGISTRY = {
     'md-to-pptx': MdToOfficeConverter,
     'office-to-md': OfficeToMdConverter,
     'diagram-to-png': DiagramToPngConverter,
+    'html-to-md': OfficeToMdConverter,
 }
