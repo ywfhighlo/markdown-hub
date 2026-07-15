@@ -143,7 +143,7 @@ code --install-extension markdown-hub-0.3.6.vsix
 
 ## 👨‍💻 作者
 
-**Yu Wenfeng** · 📧 909188787@qq.com
+**余文锋 (Yu Wenfeng)** · 📧 909188787@qq.com
 
 ## 📄 许可证
 
