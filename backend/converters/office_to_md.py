@@ -4,6 +4,7 @@ import os
 import unicodedata
 from .base_converter import BaseConverter
 from .dep_check import lib_available, lib_error, command_available, ensure_pymupdf
+from .md_to_office import _split_table_row, _render_table_cell
 import re
 import subprocess
 import tempfile
@@ -1084,11 +1085,16 @@ class OfficeToMdConverter(BaseConverter):
             return False
 
         if line.startswith('|') and line.endswith('|'):
-            pipe_count = line.count('|')
-            if pipe_count < 3:
+            # 按未转义 | 计算真实列数，识别 \\| 字面 pipe
+            # _split_table_row 会忽略首尾的 |，所以「未转义 pipe 数 = cells 数 + 1」
+            try:
+                cells = _split_table_row(line)
+            except Exception:
+                return False
+            unescaped_pipes = len(cells) + 1
+            if unescaped_pipes < 3:
                 return False
 
-            cells = [c.strip() for c in line.split('|')[1:-1]]
             if not cells:
                 return False
 
@@ -1156,8 +1162,8 @@ class OfficeToMdConverter(BaseConverter):
         if not row1.startswith('|') or not row2.startswith('|'):
             return False
 
-        cells1 = [c.strip() for c in row1.split('|')[1:-1]]
-        cells2 = [c.strip() for c in row2.split('|')[1:-1]]
+        cells1 = _split_table_row(row1)
+        cells2 = _split_table_row(row2)
 
         if len(cells1) != len(cells2):
             return False
@@ -1168,8 +1174,8 @@ class OfficeToMdConverter(BaseConverter):
         return non_empty_count2 > non_empty_count1 * 0.5
 
     def _merge_table_rows(self, row1: str, row2: str) -> str:
-        cells1 = [c.strip() for c in row1.split('|')[1:-1]]
-        cells2 = [c.strip() for c in row2.split('|')[1:-1]]
+        cells1 = _split_table_row(row1)
+        cells2 = _split_table_row(row2)
 
         merged_cells = []
         for c1, c2 in zip(cells1, cells2):
@@ -1181,7 +1187,9 @@ class OfficeToMdConverter(BaseConverter):
             else:
                 merged_cells.append(c1)
 
-        return '|' + '|'.join(merged_cells) + '|'
+        # 重建时用 _render_table_cell 把合并后的 | 转义回去，避免破坏列结构
+        escaped = [_render_table_cell(c) for c in merged_cells]
+        return '|' + '|'.join(escaped) + '|'
 
     # ─────────────────────────────────────────────
     # 其他文档类型提取
@@ -1214,6 +1222,8 @@ class OfficeToMdConverter(BaseConverter):
             for sheet_name in xls.sheet_names:
                 df = pd.read_excel(excel_path, sheet_name=sheet_name)
                 md_text += f"## Sheet: {sheet_name}\n\n"
+                # pandas.to_markdown 不自动转义单元格内的 |，要先做转义避免破坏表结构
+                df = self._escape_pipes_in_dataframe(df)
                 md_table = df.to_markdown(index=False)
                 md_text += md_table + "\n\n"
 
@@ -1232,6 +1242,31 @@ class OfficeToMdConverter(BaseConverter):
         except Exception as e:
             self.logger.error(f"处理Excel文档 {excel_path} 时出错: {str(e)}")
             return ""
+
+    def _escape_pipes_in_dataframe(self, df):
+        """对 DataFrame 的列名和所有含 | 的 cell 做转义，避免 to_markdown 破坏表结构。
+        只修改含 | 的 cell，避免无差别改写触发 dtype 警告。
+        同时把单元格内换行替换为 <br>，与 PDF→MD 路径保持一致。
+        """
+        import pandas as _pd
+
+        def _esc(v):
+            if isinstance(v, str) and v and '|' in v:
+                return v.replace('|', '\\|').replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
+            if isinstance(v, str) and v and ('\n' in v or '\r' in v):
+                return v.replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
+            return v
+
+        def _esc_col(c):
+            if isinstance(c, str) and '|' in c:
+                return c.replace('|', '\\|')
+            return c
+
+        renamed = df.rename(columns=_esc_col) if len(df.columns) else df
+        if hasattr(renamed, 'map'):
+            return renamed.map(_esc)
+        # 兼容 pandas < 2.1
+        return renamed.applymap(_esc)
 
     def _extract_text_from_powerpoint(self, pptx_path: Path) -> str:
         _resolve_dependencies()

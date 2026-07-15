@@ -10,6 +10,9 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 ### Fixed (开发中，发布时再总结)
 - pipe table 对齐冒号（`:---:`、`---:`、`:---`）被忽略的回归：分隔行原始冒号不再被剥离，DOCX / PDF / HTML 输出恢复列对齐语义。
 - `_process_code_highlighting` 反向作用问题（删除）：旧实现将 ` ```python ` 改写为无语言标注并插入 `[python代码块]` 文本，导致真高亮不可用。
+- 单元格里含合法转义 `\|` 时被误切多列：新增 `_split_table_row` 工具按未转义 `|` 切分（支持奇偶反斜杠语义），`_optimize_table_column_widths` 加入列数严格校验，分隔行含 `\|` 不再触发优化（按 GFM/Pandoc 语义）。
+- XLSX → Markdown 反向路径补齐 cell 内 `|` 转义（pandas `to_markdown` 不自动转义，原路径会破坏跨列），同时把单元格内换行替换为 `<br>`。
+- Office → Markdown 后处理路径（PDF 表格合并 `_should_merge_table_rows` / `_merge_table_rows` / `_is_definitive_table_row`）共享同一个 `_split_table_row`，避免表格合并时再次误切 `\|`。
 
 ### Changed (开发中，发布时再总结)
 - 在 `_normalize_unordered_lists` 与 `_ensure_list_spacing` 中显式跳过 pipe table 行（防御性早退）。
