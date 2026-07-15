@@ -1,10 +1,11 @@
 {
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
-  "description": "Markdown文档转换的瑞士军刀。",
+  "description": "The Swiss Army Knife for Markdown conversion — Markdown ↔ DOCX/PDF/HTML/PPTX, Office → Markdown, diagrams → PNG, batch conversion.",
   "version": "0.3.6",
-  "author": "余文锋 <909188787@qq.com>",
+  "author": "Yu Wenfeng <909188787@qq.com>",
   "publisher": "ywfhighlo",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/ywfhighlo/markdown-hub.git"
@@ -13,7 +14,26 @@
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Snippets"
+  ],
+  "keywords": [
+    "markdown",
+    "pandoc",
+    "converter",
+    "docx",
+    "pdf",
+    "html",
+    "pptx",
+    "xlsx",
+    "office",
+    "word",
+    "batch",
+    "export",
+    "convert",
+    "mermaid",
+    "plantuml",
+    "diagram"
   ],
   "icon": "media/icon.png",
   "activationEvents": [
@@ -61,43 +81,43 @@
       },
       {
         "command": "markdown-hub.batchMdToPdf",
-        "title": "Markdown批量转PDF"
+        "title": "Batch: Markdown → PDF"
       },
       {
         "command": "markdown-hub.batchMdToDocx",
-        "title": "Markdown批量转DOCX"
+        "title": "Batch: Markdown → DOCX"
       },
       {
         "command": "markdown-hub.batchMdToPptx",
-        "title": "Markdown批量转PPTX"
+        "title": "Batch: Markdown → PPTX"
       },
       {
         "command": "markdown-hub.batchPdfToMd",
-        "title": "PDF批量转Markdown"
+        "title": "Batch: PDF → Markdown"
       },
       {
         "command": "markdown-hub.batchDocxToMd",
-        "title": "DOCX批量转Markdown"
+        "title": "Batch: DOCX → Markdown"
       },
       {
         "command": "markdown-hub.batchPptxToMd",
-        "title": "PPTX批量转Markdown"
+        "title": "Batch: PPTX → Markdown"
       },
       {
         "command": "markdown-hub.batchExcelToMd",
-        "title": "Excel批量转Markdown"
+        "title": "Batch: Excel → Markdown"
       },
       {
         "command": "markdown-hub.batchAllToMd",
-        "title": "All Files批量转Markdown"
+        "title": "Batch: All Files → Markdown"
       },
       {
         "command": "markdown-hub.batchDiagramToPng",
-        "title": "图表批量转PNG"
+        "title": "Batch: Diagrams → PNG"
       },
       {
         "command": "markdown-hub.batchPdfToPng",
-        "title": "单页PDF批量转PNG"
+        "title": "Batch: Single-page PDF → PNG"
       },
       {
         "command": "markdown-hub.checkDependencies",

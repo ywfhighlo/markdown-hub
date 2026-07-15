@@ -27,4 +27,13 @@ converted_markdown_files/
 !.vscode/extensions.json
 
 # OS
-.DS_Store 
+.DS_Store
+
+# Local debug scratch
+_dbg/
+svg_temp/
+
+# AI assistant config (per-user)
+.claude/
+.zcode/
+.trae/

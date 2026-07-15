@@ -1,17 +1,22 @@
 # Exclude development files and folders
 .vscode/
-node_modules/
 .vscode-test/
+node_modules/
+.zcode/
+.claude/
+_dbg/
+svg_temp/
 
 # Source code and test files that are compiled
 src/
 test/
-.trae/
 
 # Python specific ignores
 .venv/
 backend/**/__pycache__/
 **/__pycache__/
+backend/tests/
+.pytest_cache/
 
 # Test artifacts
 test_output/
@@ -22,12 +27,15 @@ test.svg
 *.vsix
 **/*.map
 
-# Exclude project configuration
+# Exclude project configuration (not needed at runtime)
 .gitignore
+.gitattributes
 package-lock.json
 tsconfig.json
+.github/
 
 # Include important documentation files
 !README.md
+!README_zh.md
 !CHANGELOG.md
 !LICENSE
