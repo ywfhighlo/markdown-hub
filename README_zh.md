@@ -1,154 +1,150 @@
-# Markdown Hub - VSCode 扩展
+# Markdown Hub
 
-📝 **English** · **[中文](./README_zh.md)**
+<!-- BADGES -->
+![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.6-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.80+-37AAFF)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
-Markdown文档转换的瑞士军刀。- 支持Markdown与DOCX/PDF/HTML/PPTX互转，图表转PNG，批量转换等功能
+**Markdown 文档转换的瑞士军刀。**
+支持 Markdown 与 DOCX / PDF / HTML / PPTX 互转，Office → Markdown，图表转 PNG，批量转换，自定义模板等——全部通过 VS Code 右键菜单完成。
 
-## 👨‍💻 作者信息
+[English](./README.md) · [更新日志](./CHANGELOG.md) · [反馈问题](https://github.com/ywfhighlo/markdown-hub/issues)
 
-**作者**: 余文锋  
-**邮箱**: 909188787@qq.com  
-**项目地址**：https://github.com/ywfhighlo/markdown-hub 
+---
 
-## 🎯 功能特性
+## ✨ 功能特性
 
-### Markdown 转换
-- **Markdown → DOCX**: 将 `.md` 文件转换为带有自定义模板的 Word 文档。
-- **Markdown → DOCX (SVG支持)**: 将包含SVG代码块的 `.md` 文件转换为 Word 文档，SVG自动转换为PNG图片。
-- **Markdown → PDF**: 将 `.md` 文件转换为 PDF 文档。
-- **Markdown → HTML**: 将 `.md` 文件转换为带样式的 HTML 网页。
-- **Markdown → PPTX**: 将 `.md` 文件转换为 PPTX 演示文稿。
+### Markdown → Office
+- **Markdown → DOCX**（支持自定义模板）
+- **Markdown → PDF**（通过 Word / LibreOffice）
+- **Markdown → HTML**（GitHub 风格 CSS，自动目录）
+- **Markdown → PPTX**（标题页 + 内容页）
+- SVG / Mermaid / PlantUML / Draw.io 代码块自动转为 PNG
 
-### Office 与其他格式转换
-- **DOCX → Markdown**: 将 Word 文档转换为 `.md` 文件。
-- **XLSX → Markdown**: 将 Excel 表格转换为 `.md` 文件。
-- **PDF → Markdown**: 将 PDF 文档转换为 `.md` 文件。
-- **图表 → PNG**: 将SVG、Mermaid、Draw.io、PlantUML等图表文件转换为高质量PNG图片。
+### Office → Markdown
+- **DOCX → Markdown**
+- **XLSX → Markdown**（感知多 sheet，自动转义 `|`）
+- **PDF → Markdown**（PyMuPDF 文本提取 + 扫描件 OCR 回退）
+- **PPTX → Markdown**
+
+### 图表 → PNG
+- SVG / Mermaid / PlantUML / Draw.io → 高质量 PNG（Batik + mmdc）
 
 ### 批量转换
-- **Markdown批量转DOCX/PDF/HTML/PPTX**: 批量转换目录中所有 `.md` 文件。
-- **PDF/DOCX/PPTX/Excel/All Files批量转Markdown**: 批量转换目录中指定类型或所有支持的文件为 `.md` 文件。
+- 一键将整个目录的 Markdown 文件批量转为 DOCX / PDF / HTML / PPTX
+- 一键将目录中的 PDF / DOCX / PPTX / XLSX 文件批量转为 Markdown
+
+---
+
+## 📊 为什么选择 Markdown Hub？
+
+| 功能 | Markdown Hub | vscode-pandoc | MarkItDown | Markdown Preview Enhanced |
+|---------|:---:|:---:|:---:|:---:|
+| Markdown → DOCX/PDF/HTML/PPTX | ✅ | ✅（部分）| ❌ | ✅（通过 pandoc）|
+| Office → Markdown（反向）| ✅ | ❌ | ✅ | ❌ |
+| **双向转换** | ✅ | ❌ | ❌（单向）| ❌ |
+| **批量转换** | ✅ | ❌ | ❌ | ❌ |
+| **图表 → PNG** | ✅ | ❌ | ❌ | 部分 |
+| **自定义模板** | ✅ | ❌ | ❌ | ❌ |
+| PDF OCR 回退 | ✅ | ❌ | ❌ | ❌ |
+
+**Markdown Hub 是唯一一个同时覆盖双向转换、批量处理、图表渲染和自定义模板的扩展。**
+
+---
+
+## 🚀 快速开始
+
+1. 从 VS Code 应用商店安装本扩展。
+2. 在资源管理器中右键任意 `.md` 文件 → **Convert to DOCX**（或 PDF / HTML / PPTX）。
+3. 右键任意 `.docx` / `.xlsx` / `.pdf` / `.pptx` → **Convert to Markdown**。
+4. 右键任意 `.svg` / `.drawio` / `.puml` → **Convert to PNG**。
+5. 右键**文件夹** → 批量转换其中所有匹配的文件。
+
+转换后的文件保存到配置的输出目录（默认：`./converted_markdown_files`）。
+
+---
 
 ## 📋 系统要求
 
-在使用本扩展前，请确保您的系统已安装以下依赖：
+Markdown Hub 使用 Python 执行转换逻辑。请安装 Python 3.8+ 以及你需要的依赖（各功能相互独立——只装你用得到的即可）。
 
-### Windows
-- Python 3.8 或更高版本
-- Microsoft Word（用于DOCX转换）
-- Pandoc（[下载安装包](https://pandoc.org/installing.html)）
-- Tesseract OCR（用于PDF文字识别）
-- **draw.io桌面版**（用于Draw.io文件转换）- [下载地址](https://github.com/jgraph/drawio-desktop/releases)
-
-### macOS
-```bash
-# 使用 Homebrew 安装系统依赖
-brew install pandoc
-brew install tesseract
-
-# 安装draw.io桌面版
-brew install --cask drawio
-```
-- Python 3.8 或更高版本
-- LibreOffice（用于DOCX转换）
-
-### Linux
-- Python 3.8 或更高版本
-- LibreOffice
-- Pandoc
-- Tesseract OCR
-- **draw.io桌面版** - 从 [GitHub Releases](https://github.com/jgraph/drawio-desktop/releases) 下载对应的 `.deb` 或 `.rpm` 包安装
-
-### 图表转换工具（可选）
-为了获得最佳的图表转换体验，建议安装以下工具：
-- **Mermaid CLI**: `npm install -g @mermaid-js/mermaid-cli` （用于Mermaid图表）
-- **PlantUML**: 已内置支持，无需额外安装
-- **Java运行环境**: 用于SVG转换和PlantUML图表生成（项目内置Batik转换器）
-  - **Windows**: 下载并安装 [Oracle JDK](https://www.oracle.com/java/technologies/downloads/) 或 [OpenJDK](https://adoptium.net/)
-  - **macOS**: `brew install openjdk` 或从官网下载安装包
-  - **Linux**: `sudo apt install openjdk-11-jdk` (Ubuntu/Debian) 或 `sudo yum install java-11-openjdk-devel` (CentOS/RHEL)
-  - 安装后请确保 `java` 命令在系统PATH中可用
-
-## 🛠️ 安装
-
-1. 在 VS Code 中安装本扩展
-2. 安装 Python 依赖
-
-### 最小安装（仅保证 PDF → Markdown 可用）
-
+### 最小安装（仅 PDF → Markdown）
 ```bash
 pip install PyMuPDF
 ```
 
-> 这是最小核心依赖。安装后即可右键 PDF 文件 → Convert to Markdown。
-
-### 按需安装其他功能
-
-各功能所需的依赖互不耦合，缺哪个只影响对应功能，不影响已安装的功能。请根据实际需要选择安装：
-
+### 按功能安装
 | 功能 | 安装命令 |
-|------|----------|
+|---------|---------|
 | Word(.docx) → Markdown | `pip install docx2txt` |
 | Excel → Markdown | `pip install pandas tabulate openpyxl` |
 | PPTX → Markdown | `pip install python-pptx` |
-| HTML → Markdown | `pip install html2text` |
 | Markdown → DOCX | `pip install python-docx docxtpl docxcompose docx2txt` |
-| Markdown → PDF | `pip install markdown`（还需系统安装 [Pandoc](https://pandoc.org/installing.html)） |
+| Markdown → PDF | `pip install markdown` + [Pandoc](https://pandoc.org/installing.html) + Word/LibreOffice |
 | Markdown → HTML | `pip install markdown` |
 | Markdown → PPTX | `pip install python-pptx Pillow` |
 | 图表 → PNG | `pip install Pillow` |
 
-**Windows 额外**（DOCX 高级模板、PDF 导出）：
-```bash
-pip install pywin32
-```
+### 系统工具（可选，按功能需要）
+- **[Pandoc](https://pandoc.org/installing.html)** —— Markdown → DOCX / PDF / HTML 必需
+- **Microsoft Word**（Windows）或 **LibreOffice**（macOS/Linux）—— 用于 DOCX 模板渲染和 PDF 导出
+- **[Tesseract OCR](https://github.com/tesseract-ocr/tesseract)** —— 用于扫描版 PDF → Markdown
+- **[draw.io 桌面版](https://github.com/jgraph/drawio-desktop/releases)** —— 用于 Draw.io 图表转换
+- **[Mermaid CLI](https://github.com/mermaid-js/mermaid-cli)** —— `npm install -g @mermaid-js/mermaid-cli`
+- **Java** —— 用于 SVG 转换和 PlantUML（已内置 Batik）
 
-**macOS 额外**（DOCX 高级模板）：
-```bash
-pip install appscript
-```
+> 💡 运行 **`Markdown Hub: Check Dependencies`** 命令，可查看已安装和缺失的依赖。
 
-### 一键安装全部依赖
-
-```bash
-pip install pandoc-attributes Pillow python-docx docxtpl docxcompose \
-            defusedxml tinycss2 webencodings PyMuPDF pypdf pytesseract \
-            pdf2image docx2txt pandas openpyxl tabulate python-pptx \
-            xlrd html2text markdown lxml cffi chardet pycparser \
-            Jinja2 MarkupSafe psutil typing-extensions
-```
-*Windows 额外执行：`pip install pywin32`*
-*macOS 额外执行：`pip install appscript`*
-
-## 🚀 使用方法
-
-1. 在 VS Code 的资源管理器中，右键点击任何支持的文件或包含这些文件的文件夹。
-2. 在弹出的上下文菜单中，选择您需要的转换命令 (例如 "Convert to DOCX")。
-3. 对于批量转换：
-   - 右键点击文件夹。
-   - 选择如 "Markdown批量转PDF" 或 "PDF批量转Markdown" 等选项。
-   - 系统会自动处理目录中的所有匹配文件。
-4. 转换后的文件将出现在您配置的输出目录中（默认 `./converted_markdown_files`）。
-5. 若要配置模板、作者信息等，请右键选择 **"Template Settings..."**，这会直接带您到 VS Code 的设置页面。
+---
 
 ## ⚙️ 配置选项
 
-您可以在 VS Code 的 `设置(Settings)` 中搜索 `markdown-hub` 来找到所有配置项。
+在 VS Code 设置中搜索 `markdown-hub`。主要选项：
 
-- **`markdown-hub.outputDirectory`**: 所有转换后文件的输出目录。
-- **`markdown-hub.pythonPath`**: Python 解释器的路径或命令。
-- **`markdown-hub.useTemplate`**: 是否为 `Markdown → DOCX` 的转换启用模板功能。
-- **`markdown-hub.templatePath`**: 自定义 `.docx` 模板文件的完整路径。
-- **`markdown-hub.projectName`**: 模板中使用的项目名称。
-- **`markdown-hub.author`**: 模板中使用的作者姓名。
-- **`markdown-hub.email`**: 模板中使用的邮箱地址。
-- **`markdown-hub.mobilephone`**: 模板中使用的联系电话。
-- **`markdown-hub.promoteHeadings`**: 自动提升Markdown文档的标题级别，以适配"封面页"式的写作习惯。
+| 配置项 | 说明 | 默认值 |
+|---------|-------------|---------|
+| `markdown-hub.outputDirectory` | 转换后文件的输出目录 | `./converted_markdown_files` |
+| `markdown-hub.pythonPath` | Python 解释器路径（留空则自动检测）| `""` |
+| `markdown-hub.useDocxTemplate` | 是否启用 DOCX 模板 | `true` |
+| `markdown-hub.docxTemplatePath` | 自定义 `.docx` 模板路径 | `""` |
+| `markdown-hub.promoteHeadings` | 标题级别自动提升一级（封面页式写作）| `true` |
+| `markdown-hub.codeHighlightTheme` | 代码块高亮主题（pygments/tango/.../off）| `pygments` |
+| `markdown-hub.svgDpi` | SVG 转 PNG 的 DPI | `300` |
 
-## 🤝 贡献
+完整配置：打开 VS Code 设置，搜索 `markdown-hub`。
 
-欢迎提交 Issue 和 Pull Request！
+---
+
+## 🛠️ 从源码构建
+
+```bash
+git clone https://github.com/ywfhighlo/markdown-hub.git
+cd markdown-hub
+npm install
+npm run compile
+# 打包 .vsix
+npx @vscode/vsce package
+# 本地安装
+code --install-extension markdown-hub-0.3.6.vsix
+```
+
+---
+
+## 🤝 参与贡献
+
+欢迎贡献！详见 [CONTRIBUTING.md](./.github/CONTRIBUTING.md)。
+
+- 🐛 [报告 Bug](https://github.com/ywfhighlo/markdown-hub/issues/new?template=bug_report.md)
+- 💡 [功能建议](https://github.com/ywfhighlo/markdown-hub/issues/new?template=feature_request.md)
+- 🔧 [提交 PR](https://github.com/ywfhighlo/markdown-hub/compare)
+
+---
+
+## 👨‍💻 作者
+
+**Yu Wenfeng** · 📧 909188787@qq.com
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+[MIT](./LICENSE)

@@ -2,33 +2,31 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
-## [Unreleased]
-
-### Added (开发中，发布时再总结)
-- 代码块真高亮：默认主题 pygments；新增设置 `markdown-hub.codeHighlightTheme` 可选 8 个 pandoc 内置主题（pygments / tango / espresso / zenburn / kate / monochrome / breezedark / haddock）或 `off`。作用于 Markdown → DOCX / PDF / HTML；PPTX 不受影响。
-
-### Fixed (开发中，发布时再总结)
-- pipe table 对齐冒号（`:---:`、`---:`、`:---`）被忽略的回归：分隔行原始冒号不再被剥离，DOCX / PDF / HTML 输出恢复列对齐语义。
-- `_process_code_highlighting` 反向作用问题（删除）：旧实现将 ` ```python ` 改写为无语言标注并插入 `[python代码块]` 文本，导致真高亮不可用。
-- 单元格里含合法转义 `\|` 时被误切多列：新增 `_split_table_row` 工具按未转义 `|` 切分（支持奇偶反斜杠语义），`_optimize_table_column_widths` 加入列数严格校验，分隔行含 `\|` 不再触发优化（按 GFM/Pandoc 语义）。
-- XLSX → Markdown 反向路径补齐 cell 内 `|` 转义（pandas `to_markdown` 不自动转义，原路径会破坏跨列），同时把单元格内换行替换为 `<br>`。
-- Office → Markdown 后处理路径（PDF 表格合并 `_should_merge_table_rows` / `_merge_table_rows` / `_is_definitive_table_row`）共享同一个 `_split_table_row`，避免表格合并时再次误切 `\|`。
-
-### Changed (开发中，发布时再总结)
-- 在 `_normalize_unordered_lists` 与 `_ensure_list_spacing` 中显式跳过 pipe table 行（防御性早退）。
-
 ## [0.3.6] - 2025-06-26
+
+### Added
+- 代码块语法高亮：默认主题 pygments；新增设置 `markdown-hub.codeHighlightTheme`，可选 8 个 pandoc 内置主题（pygments / tango / espresso / zenburn / kate / monochrome / breezedark / haddock）或 `off`。作用于 Markdown → DOCX / PDF / HTML；PPTX 不受影响。
 
 ### Changed
 - 实现依赖懒加载和解耦，单个依赖缺失不影响其他功能正常使用
 - 依赖检查改为按功能维度独立检查，前端依赖面板按功能展示状态
+- 在 `_normalize_unordered_lists` 与 `_ensure_list_spacing` 中显式跳过 pipe table 行（防御性早退），降低未来正则调整时的回归风险
+- 用户可见文案全面英文化（命令标题、错误提示、进度条、依赖检查面板）；中文文档保留在 `README_zh.md`
+- `package.json` 新增 16 个 keywords、补全 categories、声明 `license: MIT`、description 改英文，提升 Marketplace 可发现性
+- README 改为英文主文档 + 中文版 `README_zh.md`，新增竞品对比表与徽章
+- 移除 requirements.txt 安装流程，改为 README.md 中提供分层安装说明
 
 ### Fixed
+- pipe table 对齐冒号（`:---:`、`---:`、`:---`）被忽略的回归：分隔行原始冒号不再被剥离，DOCX / PDF / HTML 输出恢复列对齐语义（居中 / 右对齐 / 左对齐）
+- 代码块高亮长期失效：删除反向作用的 `_process_code_highlighting`（旧实现将 ` ```python ` 改写为无语言标注并插入 `[python代码块]` 文本），改由 pandoc `--highlight-style` 原生渲染
+- 单元格里含合法转义 `\|` 时被误切多列：新增 `_split_table_row` 工具按未转义 `|` 切分（支持奇偶反斜杠语义），`_optimize_table_column_widths` 加入列数严格校验；分隔行含 `\|` 不再触发优化（按 GFM/Pandoc 语义）
+- XLSX → Markdown 反向路径补齐 cell 内 `|` 转义（pandas `to_markdown` 不自动转义，原路径会破坏跨列），同时把单元格内换行替换为 `<br>`
+- Office → Markdown 后处理路径（PDF 表格合并 `_should_merge_table_rows` / `_merge_table_rows` / `_is_definitive_table_row`）共享同一个 `_split_table_row`，避免表格合并时再次误切 `\|`
+- `cli.py` 传给前端的 progress stage 值与 `STAGE_LABELS` key 不匹配（中文 stage 无法翻译），统一为英文 key
 - 修复错误报告笼统不具体的问题，提供精确的依赖缺失原因和解决方案
 - 修复 PyMuPDF 已安装但因 DLL 加载失败导致的误报"缺少依赖"问题
 - 修复 Markdown → PDF 转换失败时错误提示误导用户安装 markdown 库的问题，改为正确提示缺少 Pandoc 或 Word/LibreOffice
 - 修复 PDF → MD 转换失败时提示不准确的问题，区分主路径(PyMuPDF)和回退路径(pypdf+OCR)并展示具体加载错误
-- 移除 requirements.txt 安装流程，改为 README.md 中提供分层安装说明
 
 ## [0.3.5] - 2025-9-30
 
