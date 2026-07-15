@@ -110,13 +110,13 @@ function getConversionTypeLabel(type: ConversionType): string {
 function classifyError(errorMessage: string): { category: string; suggestion: string } {
     const lowerError = errorMessage.toLowerCase();
 
-    if (lowerError.includes('permission') || lowerError.includes('权限') || lowerError.includes('denied')) {
+    if (lowerError.includes('permission') || lowerError.includes('denied')) {
         return {
             category: 'Permission Denied',
             suggestion: 'Check file permissions, or run VS Code as administrator'
         };
     }
-    if (lowerError.includes('not found') || lowerError.includes('找不到') || lowerError.includes('不存在') || lowerError.includes('does not exist')) {
+    if (lowerError.includes('not found') || lowerError.includes('does not exist') || lowerError.includes('no such file')) {
         return {
             category: 'File Missing',
             suggestion: 'Verify the file path is correct and the file has not been moved or deleted'
@@ -134,13 +134,13 @@ function classifyError(errorMessage: string): { category: string; suggestion: st
             suggestion: 'Install the required conversion tools: pandoc, wkhtmltopdf, etc.'
         };
     }
-    if (lowerError.includes('memory') || lowerError.includes('内存') || lowerError.includes('out of memory')) {
+    if (lowerError.includes('memory') || lowerError.includes('out of memory')) {
         return {
             category: 'Insufficient Resources',
             suggestion: 'The file may be too large — try batch processing or increase system memory'
         };
     }
-    if (lowerError.includes('format') || lowerError.includes('格式')) {
+    if (lowerError.includes('format')) {
         return {
             category: 'Format Error',
             suggestion: 'Check that the file format is correct, or try converting to standard Markdown'
