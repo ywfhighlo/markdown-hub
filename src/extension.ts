@@ -134,8 +134,11 @@ vscode.commands.registerCommand('markdown-hub.mdToPptx',
         vscode.commands.registerCommand('markdown-hub.batchMdToDocx', 
             (uri: vscode.Uri) => handleConvertCommand(uri, 'md-to-docx', context)),
         
-        vscode.commands.registerCommand('markdown-hub.batchMdToPptx', 
+vscode.commands.registerCommand('markdown-hub.batchMdToPptx',
             (uri: vscode.Uri) => handleConvertCommand(uri, 'md-to-pptx', context)),
+
+        vscode.commands.registerCommand('markdown-hub.batchMdToEpub',
+            (uri: vscode.Uri) => handleConvertCommand(uri, 'md-to-epub', context)),
         
         vscode.commands.registerCommand('markdown-hub.batchPdfToMd', 
             (uri: vscode.Uri) => handleBatchConvert(uri, 'pdf', context)),

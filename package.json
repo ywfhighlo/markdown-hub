@@ -97,6 +97,10 @@
         "title": "Batch: Markdown → PPTX"
       },
       {
+        "command": "markdown-hub.batchMdToEpub",
+        "title": "Batch: Markdown → EPUB"
+      },
+      {
         "command": "markdown-hub.batchPdfToMd",
         "title": "Batch: PDF → Markdown"
       },
@@ -184,7 +188,7 @@
           "group": "2_conversion@1"
         },
         {
-          "when": "resourceExtname == .svg || resourceExtname == .drawio || resourceExtname == .puml || resourceExtname == .plantuml || resourceExtname == .pu",
+          "when": "resourceExtname == .svg || resourceExtname == .drawio || resourceExtname == .mmd || resourceExtname == .puml || resourceExtname == .plantuml || resourceExtname == .pu",
           "command": "markdown-hub.diagramToPng",
           "group": "2_conversion@1"
         },
@@ -245,8 +249,13 @@
         },
         {
           "when": "explorerResourceIsFolder",
-          "command": "markdown-hub.batchDiagramToPng",
+          "command": "markdown-hub.batchMdToEpub",
           "group": "4_md_batch@4"
+        },
+        {
+          "when": "explorerResourceIsFolder",
+          "command": "markdown-hub.batchDiagramToPng",
+          "group": "4_md_batch@6"
         },
         {
           "when": "explorerResourceIsFolder",
