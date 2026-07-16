@@ -21,7 +21,7 @@ _IS_WINDOWS = platform.system() == "Windows"
 
 # 模块级占位
 _pptx_mod = None
-_Inches = _Pt = _RGBColor = _MSO_SHAPE = _PP_ALIGN = None
+_Inches = _Pt = _RGBColor = _MSO_SHAPE = _PP_ALIGN = _Presentation = None
 _PIL_Image = None
 _win32com_Dispatch = None
 _WD_SECTION_START = None
@@ -99,13 +99,14 @@ def _render_table_cell(cell: str) -> str:
 
 def _resolve_pptx():
     """按需加载 python-pptx 和 Pillow（PPTX 生成）"""
-    global _pptx_resolved, _pptx_mod, _Inches, _Pt, _RGBColor, _MSO_SHAPE, _PP_ALIGN, _PIL_Image
+    global _pptx_resolved, _pptx_mod, _Inches, _Pt, _RGBColor, _MSO_SHAPE, _PP_ALIGN, _PIL_Image, _Presentation
     if _pptx_resolved:
         return
     _pptx_resolved = True
     import importlib
     if lib_available("python-pptx"):
         _pptx_mod = importlib.import_module("pptx")
+        _Presentation = _pptx_mod.Presentation
         _Inches = importlib.import_module("pptx.util").Inches
         _Pt = importlib.import_module("pptx.util").Pt
         _RGBColor = importlib.import_module("pptx.dml.color").RGBColor
@@ -451,7 +452,8 @@ class MdToOfficeConverter(BaseConverter):
             return str(output_file_path)
             
         except Exception as e:
-            self.logger.error(f"Failed during title_and_svg mode conversion: {e}")
+            self.logger.error(f"Failed during title_and_svg mode conversion: {e}", exc_info=True)
+            self._last_failure_reason = f"PPTX 转换失败: {type(e).__name__}: {e}"
             return None
         finally:
             # 清理临时文件
@@ -553,7 +555,8 @@ class MdToOfficeConverter(BaseConverter):
             return str(output_file_path)
 
         except Exception as e:
-            self.logger.error(f"Failed during full mode conversion: {e}")
+            self.logger.error(f"Failed during full mode conversion: {e}", exc_info=True)
+            self._last_failure_reason = f"PPTX 转换失败: {type(e).__name__}: {e}"
             return None
         finally:
             # 清理临时文件
@@ -1376,7 +1379,7 @@ class MdToOfficeConverter(BaseConverter):
         if self.template_path and Path(self.template_path).exists():
             self.logger.info(f"正在加载模板: {self.template_path}")
             try:
-                prs = Presentation(self.template_path)
+                prs = _Presentation(self.template_path)
                 
                 # 完全移除所有示例幻灯片，只保留布局
                 while len(prs.slides) > 0:
@@ -1389,10 +1392,10 @@ class MdToOfficeConverter(BaseConverter):
             except Exception as e:
                 self.logger.error(f"加载模板失败: {self.template_path}, 错误: {e}")
                 self.logger.info("将创建空白演示文稿作为备用方案。")
-                return Presentation()
+                return _Presentation()
         else:
             self.logger.info("未提供模板或模板不存在，正在创建空白演示文稿。")
-            return Presentation()
+            return _Presentation()
     
     def _create_title_slide(self, prs: 'Presentation', title_text: str):
         """创建标题幻灯片"""
