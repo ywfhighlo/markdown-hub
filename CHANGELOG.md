@@ -18,6 +18,8 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - Escaped pipes (`\|`) inside table cells no longer break column structure, across MD→Office and XLSX/PDF→MD paths
 - Progress-bar labels now translate correctly (stage keys aligned between frontend and backend)
 - Clearer, more accurate error messages for missing dependencies (Pandoc, Word/LibreOffice, PyMuPDF)
+- DOCX → Markdown: horizontally-merged table cells no longer emit duplicate content (python-docx returns the same cell for each grid column of a merge; we now dedupe by `<w:tc>` element)
+- Dependency detection: `python-pptx` and `Pillow` are now correctly recognized when installed via pip (their pip name differs from their import name — `pptx` and `PIL` respectively; previously reported as missing, blocking PPTX and image-related conversions)
 
 ### Added
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text

@@ -1268,13 +1268,28 @@ class OfficeToMdConverter(BaseConverter):
             return inline if inline else text
 
         def table_to_md(table):
-            """Convert a Word table to a GFM pipe table."""
+            """Convert a Word table to a GFM pipe table.
+
+            Handles merged cells: python-docx returns the same cell object
+            multiple times for horizontally-merged cells (each grid column
+            references the same underlying <w:tc>). We dedupe by tc element
+            id, emitting the text once and leaving subsequent columns empty
+            so the markdown table stays well-formed.
+            """
             rows = []
             for row in table.rows:
                 cells = []
+                seen_tc_ids = set()
                 for cell in row.cells:
+                    # Dedupe merged cells by their underlying <w:tc> element id
+                    tc_id = id(cell._tc)
                     cell_text = cell.text.strip().replace('\n', '<br>').replace('|', '\\|')
-                    cells.append(cell_text)
+                    if tc_id in seen_tc_ids:
+                        # This is a continuation of a merged cell — emit empty
+                        cells.append('')
+                    else:
+                        seen_tc_ids.add(tc_id)
+                        cells.append(cell_text)
                 rows.append(cells)
             if not rows:
                 return ''

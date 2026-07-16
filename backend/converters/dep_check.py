@@ -382,6 +382,16 @@ _INSTALLABLE_HEAVY_LIBS = {
         "import_name": "docx",
         "hint": "DOCX → Markdown 结构化提取所需（pip 包名 python-docx，导入名 docx）",
     },
+    "python-pptx": {
+        "pip_name": "python-pptx",
+        "import_name": "pptx",
+        "hint": "PPTX 转换所需（pip 包名 python-pptx，导入名 pptx）",
+    },
+    "Pillow": {
+        "pip_name": "Pillow",
+        "import_name": "PIL",
+        "hint": "图像处理所需（pip 包名 Pillow，导入名 PIL）",
+    },
 }
 
 
