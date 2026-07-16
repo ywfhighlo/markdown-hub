@@ -34,6 +34,12 @@ package-lock.json
 tsconfig.json
 .github/
 
+# Exclude large bundled dependencies — downloaded on-demand to user cache
+# (see backend/resource_manager.py)
+tools/plantuml.jar
+tools/poppler/
+tools/batik-lib/
+
 # Include important documentation files
 !README.md
 !README_zh.md

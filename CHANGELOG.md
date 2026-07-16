@@ -27,6 +27,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Changed
 - HTML → Markdown: output style normalized to match the rest of the project (`*italic*` instead of `_italic_`, `- item` instead of `* item`, top-level 2-space indent removed)
+- VSIX install size: PlantUML jar (21 MB) is no longer bundled — it's downloaded on-demand to `~/.markdown-hub/cache/plantuml/` on first use. Failed downloads fall back to the previous behavior (user-configured / system path). Net effect: VSIX shrinks from ~41 MB to ~5 MB for users who don't use PlantUML. Disable auto-download by setting `MARKDOWN_HUB_NO_AUTO_DOWNLOAD=1`.
 
 ### Added
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text

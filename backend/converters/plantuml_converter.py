@@ -234,54 +234,69 @@ class PlantUMLConverter(BaseConverter):
     def _get_plantuml_jar_path(self) -> Optional[str]:
         """
         获取PlantUML JAR包路径
-        
+
         查找顺序：
+        0. 缓存目录 ~/.markdown-hub/cache/plantuml/plantuml.jar（按需下载）
         1. 配置文件指定路径
         2. 环境变量PLANTUML_JAR
         3. 当前目录
         4. 系统PATH中的plantuml.jar
         5. 用户主目录/.plantuml/
-        
+
         Returns:
             Optional[str]: JAR包路径，未找到返回None
         """
         if self._jar_path_cache:
             return self._jar_path_cache
-        
+
+        # 0. Per-user cache: try to obtain via resource_manager (auto-download)
+        try:
+            from backend.resource_manager import PLANTUML_SPEC, ensure_resource, cache_path as _cache_path
+            cached_dir = ensure_resource(PLANTUML_SPEC)
+            if cached_dir:
+                # For "raw" archive format, the jar sits at <cache>/<jar_name>
+                jar_in_cache = _cache_path(PLANTUML_SPEC) / self.PLANTUML_JAR_NAME
+                if jar_in_cache.is_file():
+                    self._jar_path_cache = str(jar_in_cache)
+                    self.logger.info(f"从缓存找到 PlantUML JAR: {self._jar_path_cache}")
+                    return self._jar_path_cache
+        except Exception as e:
+            self.logger.debug(f"Cache lookup failed: {e}")
+
         search_paths = []
-        
+
         # 1. 配置文件指定路径
         if self.plantuml_config.plantuml_jar_path:
             search_paths.append(self.plantuml_config.plantuml_jar_path)
-        
+
         # 2. 环境变量
         env_path = os.environ.get('PLANTUML_JAR')
         if env_path:
             search_paths.append(env_path)
-        
+
         # 3. 当前目录
         search_paths.append(os.path.join(os.getcwd(), self.PLANTUML_JAR_NAME))
-        
+
         # 4. 系统PATH中查找
         system_jar = shutil.which('plantuml.jar')
         if system_jar:
             search_paths.append(system_jar)
-        
+
         # 5. 用户主目录
         home_path = os.path.join(os.path.expanduser('~'), '.plantuml', self.PLANTUML_JAR_NAME)
         search_paths.append(home_path)
-        
-        # 6. 项目目录下的tools文件夹
+
+        # 6. 项目目录下的tools文件夹（兜底：VSIX 包内）
         project_tools_path = os.path.join(os.path.dirname(__file__), '..', '..', 'tools', self.PLANTUML_JAR_NAME)
         search_paths.append(os.path.abspath(project_tools_path))
-        
+
         # 查找JAR文件
         for path in search_paths:
             if os.path.isfile(path):
                 self._jar_path_cache = path
                 self.logger.info(f"找到PlantUML JAR: {path}")
                 return path
-        
+
         self.logger.warning(f"未找到PlantUML JAR包，搜索路径: {search_paths}")
         return None
     
