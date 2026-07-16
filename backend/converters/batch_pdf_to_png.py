@@ -35,43 +35,63 @@ def batch_convert(directory, poppler_path=None):
 
     success_count = 0
     fail_count = 0
+    poppler_unavailable = False
 
     for pdf_file in pdf_files:
         try:
             print(f"Converting {pdf_file.name}...")
             # Convert first page only (assuming single page figures)
             images = convert_from_path(str(pdf_file), first_page=1, last_page=1, poppler_path=poppler_path)
-            
+
             if images:
                 output_file = pdf_file.with_suffix('.png')
                 images[0].save(output_file, 'PNG')
                 print(f"  -> Saved to {output_file.name}")
                 success_count += 1
-                
+
                 # Delete original PDF if successful
                 try:
                     pdf_file.unlink()
                     print(f"  -> Deleted original PDF: {pdf_file.name}")
                 except Exception as del_e:
                     print(f"  -> Warning: Failed to delete PDF {pdf_file.name}: {del_e}")
-                    
+
             else:
                 print(f"  -> Warning: No images extracted from {pdf_file.name}")
                 fail_count += 1
-                
+
         except Exception as e:
+            # If Poppler is missing, every remaining PDF will fail the same way —
+            # surface one actionable platform-specific hint and abort instead of
+            # spamming the same error per file.
+            try:
+                from backend.dependency_hints import is_poppler_missing_error, poppler_install_hint
+                if is_poppler_missing_error(e):
+                    print(f"  -> Failed: {pdf_file.name}")
+                    print(poppler_install_hint())
+                    remaining = len(pdf_files) - success_count - fail_count - 1
+                    if remaining > 0:
+                        print(f"\nAborting batch: Poppler unavailable; {remaining} more PDF(s) skipped.")
+                        fail_count += remaining
+                    fail_count += 1
+                    poppler_unavailable = True
+                    break
+            except Exception:
+                pass
             print(f"  -> Failed: {e}")
             fail_count += 1
 
     print(f"\nConversion Complete.")
     print(f"Success: {success_count}")
     print(f"Failed: {fail_count}")
-    
-    if fail_count > 0:
+
+    if fail_count > 0 and not poppler_unavailable:
         print("\nTroubleshooting:")
-        print("1. Ensure 'poppler' is installed and added to PATH.")
-        print("   - Windows: Download from https://github.com/oschwartz10612/poppler-windows/releases/")
-        print("   - Extract and add 'bin' folder to system PATH.")
+        try:
+            from backend.dependency_hints import poppler_install_hint
+            print(poppler_install_hint())
+        except Exception:
+            print("Ensure 'poppler' is installed and available on PATH.")
         
     # Exit with error if no files were successfully converted
     if success_count == 0 and len(pdf_files) > 0:

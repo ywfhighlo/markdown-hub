@@ -1045,6 +1045,11 @@ class OfficeToMdConverter(BaseConverter):
                     if cached_bin:
                         poppler_path = str(cached_bin)
                         self.logger.info(f"从缓存获取 Poppler bin: {poppler_path}")
+                    else:
+                        self.logger.debug(
+                            "Poppler not in cache (auto-download unavailable, "
+                            "disabled, or non-Windows); will let pdf2image try PATH"
+                        )
                 except Exception as e:
                     self.logger.debug(f"Poppler cache lookup failed: {e}")
 
@@ -1069,7 +1074,16 @@ class OfficeToMdConverter(BaseConverter):
             return combined_text
 
         except Exception as e:
-            self.logger.error(f"OCR处理失败: {str(e)}")
+            # Surface an actionable install hint when Poppler is the culprit,
+            # instead of a bare "OCR处理失败" that leaves the user guessing.
+            try:
+                from backend.dependency_hints import is_poppler_missing_error, poppler_install_hint
+                if is_poppler_missing_error(e):
+                    self.logger.error(poppler_install_hint())
+                else:
+                    self.logger.error(f"OCR处理失败: {str(e)}")
+            except Exception:
+                self.logger.error(f"OCR处理失败: {str(e)}")
             return ""
 
     def _merge_split_table_cells(self, text: str) -> str:

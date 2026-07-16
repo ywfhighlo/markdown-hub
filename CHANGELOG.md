@@ -25,6 +25,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - DOCX → Markdown inline images are now extracted to `<docx>_images/` and referenced with `![](path)` — previously dropped entirely
 - Batch conversion: emits a per-file summary to the output channel showing succeeded/failed counts and the reason for each failure — previously failed files were silently skipped
 - PDF OCR (`DOCX→MD _ocr_pdf`) and batch PDF→PNG: when no explicit `--poppler-path` / `POPPLER_PATH` is configured, the converters now consult the on-demand cache (auto-downloading Poppler on Windows) before letting pdf2image fall back to PATH. Closes a regression introduced when Poppler was removed from the VSIX — Windows users without a system poppler install had silently lost PDF OCR and PDF→PNG.
+- PDF OCR and batch PDF→PNG: when Poppler still can't be located (download failed on Windows, or not installed on macOS/Linux), converters now emit a platform-specific install hint instead of a bare opaque error — `brew install poppler` on macOS, `apt`/`dnf`/`pacman install poppler-utils` on Linux, or the manual-download URL + `--poppler-path` option on Windows. Batch PDF→PNG aborts on the first Poppler-missing failure rather than repeating the same error for every file.
 
 ### Changed
 - HTML → Markdown: output style normalized to match the rest of the project (`*italic*` instead of `_italic_`, `- item` instead of `* item`, top-level 2-space indent removed)
