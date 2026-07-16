@@ -23,6 +23,7 @@ def batch_convert(directory, poppler_path=None):
 
     # Resolve poppler_path: explicit arg/env wins, then on-demand cache
     # (auto-downloads on Windows), finally let pdf2image try PATH.
+    poppler_context = ""  # reason for the install hint if conversion fails
     if not poppler_path:
         try:
             from backend.resource_manager import get_poppler_bin_path
@@ -30,6 +31,9 @@ def batch_convert(directory, poppler_path=None):
             if cached_bin:
                 poppler_path = str(cached_bin)
                 print(f"Using cached Poppler from: {poppler_path}")
+            else:
+                from backend.dependency_hints import poppler_failure_context
+                poppler_context = poppler_failure_context()
         except Exception as e:
             print(f"Poppler cache lookup failed: {e}")
 
@@ -68,7 +72,7 @@ def batch_convert(directory, poppler_path=None):
                 from backend.dependency_hints import is_poppler_missing_error, poppler_install_hint
                 if is_poppler_missing_error(e):
                     print(f"  -> Failed: {pdf_file.name}")
-                    print(poppler_install_hint())
+                    print(poppler_install_hint(context=poppler_context))
                     remaining = len(pdf_files) - success_count - fail_count - 1
                     if remaining > 0:
                         print(f"\nAborting batch: Poppler unavailable; {remaining} more PDF(s) skipped.")

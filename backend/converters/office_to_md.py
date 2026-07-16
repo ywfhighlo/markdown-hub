@@ -1037,6 +1037,7 @@ class OfficeToMdConverter(BaseConverter):
             return ""
 
         try:
+            poppler_context = ""  # reason for the install hint if conversion fails
             if self.tesseract_cmd:
                 pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
 
@@ -1051,9 +1052,10 @@ class OfficeToMdConverter(BaseConverter):
                         poppler_path = str(cached_bin)
                         self.logger.info(f"从缓存获取 Poppler bin: {poppler_path}")
                     else:
+                        from backend.dependency_hints import poppler_failure_context
+                        poppler_context = poppler_failure_context()
                         self.logger.debug(
-                            "Poppler not in cache (auto-download unavailable, "
-                            "disabled, or non-Windows); will let pdf2image try PATH"
+                            "Poppler not in cache; will let pdf2image try PATH"
                         )
                 except Exception as e:
                     self.logger.debug(f"Poppler cache lookup failed: {e}")
@@ -1084,7 +1086,7 @@ class OfficeToMdConverter(BaseConverter):
             try:
                 from backend.dependency_hints import is_poppler_missing_error, poppler_install_hint
                 if is_poppler_missing_error(e):
-                    self.logger.error(poppler_install_hint())
+                    self.logger.error(poppler_install_hint(context=poppler_context))
                 else:
                     self.logger.error(f"OCR处理失败: {str(e)}")
             except Exception:

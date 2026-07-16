@@ -84,3 +84,36 @@ def test_classifies_pdf2image_exception_type():
     except ImportError:
         pytest.skip("pdf2image not installed in this env")
     assert dh.is_poppler_missing_error(PDFInfoNotInstalledError("missing"))
+
+
+# ─────────────────────────────────────────────
+# poppler_failure_context — why auto-obtain failed
+# ─────────────────────────────────────────────
+
+def test_failure_context_windows_download_failed(monkeypatch):
+    """Windows + auto-download enabled (but it failed) -> 'auto-download failed'."""
+    monkeypatch.setattr(dh.platform, "system", lambda: "Windows")
+    import backend.resource_manager as rm
+    monkeypatch.setattr(rm, "is_auto_download_enabled", lambda: True)
+    assert dh.poppler_failure_context() == "auto-download failed"
+
+
+def test_failure_context_windows_download_disabled(monkeypatch):
+    """Windows + user opted out -> hint names the env var to unset."""
+    monkeypatch.setattr(dh.platform, "system", lambda: "Windows")
+    import backend.resource_manager as rm
+    monkeypatch.setattr(rm, "is_auto_download_enabled", lambda: False)
+    ctx = dh.poppler_failure_context()
+    assert "disabled" in ctx and "MARKDOWN_HUB_NO_AUTO_DOWNLOAD" in ctx
+
+
+def test_failure_context_macos_empty(monkeypatch):
+    """macOS relies on brew, not auto-download -> empty context."""
+    monkeypatch.setattr(dh.platform, "system", lambda: "Darwin")
+    assert dh.poppler_failure_context() == ""
+
+
+def test_failure_context_linux_empty(monkeypatch):
+    """Linux relies on apt/dnf, not auto-download -> empty context."""
+    monkeypatch.setattr(dh.platform, "system", lambda: "Linux")
+    assert dh.poppler_failure_context() == ""

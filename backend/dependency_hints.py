@@ -76,3 +76,23 @@ def is_poppler_missing_error(exc: BaseException) -> bool:
         pass
     msg = str(exc).lower()
     return any(k in msg for k in ("poppler", "pdfinfo", "pdftoppm"))
+
+
+def poppler_failure_context() -> str:
+    """Return a context string explaining why Poppler couldn't be auto-obtained.
+
+    Empty on macOS/Linux (where the system package manager is the expected
+    path, not a download). On Windows, distinguishes a failed auto-download
+    from a user-disabled one so the install hint can tell the user exactly
+    what to fix — e.g. "auto-download failed" vs
+    "auto-download disabled (MARKDOWN_HUB_NO_AUTO_DOWNLOAD=1)".
+    """
+    if platform.system() != "Windows":
+        return ""
+    try:
+        from .resource_manager import is_auto_download_enabled
+        if is_auto_download_enabled():
+            return "auto-download failed"
+        return "auto-download disabled (MARKDOWN_HUB_NO_AUTO_DOWNLOAD=1)"
+    except Exception:
+        return "auto-download unavailable"
