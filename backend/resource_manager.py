@@ -28,6 +28,7 @@ import platform
 import shutil
 import sys
 import tarfile
+import time
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -126,19 +127,76 @@ def is_auto_download_enabled() -> bool:
     return os.environ.get("MARKDOWN_HUB_NO_AUTO_DOWNLOAD", "0") != "1"
 
 
-def _download(url: str, dest: Path) -> bool:
-    """Download URL to a file. Returns True on success."""
+def _download(url: str, dest: Path, max_retries: int = 3) -> bool:
+    """Download ``url`` to ``dest`` with progress logging and retries.
+
+    Returns True on success, False after all retries are exhausted. A 48 MB
+    Poppler download no longer looks like a hung process: progress is logged
+    every ~10% (or every 5 MB when the server omits Content-Length).
+    Transient network errors trigger up to ``max_retries`` attempts with
+    exponential backoff; any partial file is removed between attempts so a
+    retry starts clean.
+    """
     if not url:
         return False
-    try:
-        logger.info(f"Downloading {url} to {dest}")
-        req = Request(url, headers={"User-Agent": "markdown-hub-extension"})
-        with urlopen(req, timeout=120) as resp, open(dest, "wb") as f:
-            shutil.copyfileobj(resp, f)
-        return True
-    except (URLError, OSError) as e:
-        logger.warning(f"Download failed: {e}")
-        return False
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            _download_once(url, dest)
+            return True
+        except (URLError, OSError) as e:
+            logger.warning(f"Download attempt {attempt}/{max_retries} failed: {e}")
+            dest.unlink(missing_ok=True)  # discard partial file before retry
+            if attempt < max_retries:
+                backoff = 2 ** (attempt - 1)  # 1s, 2s, 4s
+                logger.info(f"Retrying in {backoff}s...")
+                time.sleep(backoff)
+    logger.warning(f"Download failed after {max_retries} attempts: {url}")
+    return False
+
+
+def _download_once(url: str, dest: Path) -> None:
+    """Perform a single download attempt, logging progress.
+
+    Raises ``URLError`` / ``OSError`` on failure so the caller can retry.
+    Validates a short read (fewer bytes than Content-Length promised) by
+    raising ``OSError`` — this catches truncated downloads that would
+    otherwise produce a corrupt archive.
+    """
+    logger.info(f"Downloading {url} -> {dest}")
+    req = Request(url, headers={"User-Agent": "markdown-hub-extension"})
+    chunk_size = 64 * 1024  # 64 KB
+    progress_step = 5 * 1024 * 1024  # log at least every 5 MB
+
+    with urlopen(req, timeout=60) as resp, open(dest, "wb") as f:
+        total_hdr = resp.getheader("Content-Length")
+        total = int(total_hdr) if total_hdr else None
+        downloaded = 0
+        last_log_pct = -1
+        next_log_bytes = progress_step
+
+        while True:
+            chunk = resp.read(chunk_size)
+            if not chunk:
+                break
+            f.write(chunk)
+            downloaded += len(chunk)
+
+            if total:
+                pct = downloaded * 100 // total
+                if pct >= last_log_pct + 10:
+                    last_log_pct = pct
+                    logger.info(
+                        f"Download progress: {downloaded / 1e6:.1f} / "
+                        f"{total / 1e6:.1f} MB ({pct}%)"
+                    )
+            elif downloaded >= next_log_bytes:
+                logger.info(f"Download progress: {downloaded / 1e6:.1f} MB (size unknown)")
+                next_log_bytes = downloaded + progress_step
+
+    if total is not None and downloaded != total:
+        raise OSError(f"Short read: got {downloaded} of {total} bytes")
+    logger.info(f"Download complete: {downloaded / 1e6:.1f} MB")
 
 
 def _extract(archive: Path, dest: Path, fmt: str) -> None:
