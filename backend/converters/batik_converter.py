@@ -270,44 +270,62 @@ class BatikConverter(BaseConverter):
     def _get_batik_jar_path(self) -> Optional[str]:
         """
         获取Batik JAR包路径
-        
+
         查找顺序：
+        0. 用户缓存 ~/.markdown-hub/cache/batik-lib/batik-all.jar（按需下载）
         1. 配置文件指定路径
         2. 环境变量BATIK_JAR
-        3. 项目目录下的tools/batik-lib/batik-all.jar
+        3. 项目目录下的tools/batik-lib/batik-all.jar（兜底）
         4. 当前目录
-        
+
         Returns:
             Optional[str]: JAR包路径，未找到返回None
         """
         if self._jar_path_cache:
             return self._jar_path_cache
-        
+
+        # 0. Per-user cache (auto-download)
+        try:
+            from backend.resource_manager import BATIK_SPEC, ensure_resource, cache_path as _cache_path
+            cached_dir = ensure_resource(BATIK_SPEC)
+            if cached_dir:
+                # Batik zip extracts into <cache>/batik/<version>/batik-lib/*.jar
+                # The version subdir is created by the zip's root folder.
+                for sub in cached_dir.iterdir():
+                    if sub.is_dir():
+                        for lib_candidate in (sub, sub / self.BATIK_LIB_DIR_NAME):
+                            if (lib_candidate / self.BATIK_ALL_JAR_NAME).is_file():
+                                self._jar_path_cache = str(lib_candidate / self.BATIK_ALL_JAR_NAME)
+                                self.logger.info(f"从缓存找到 Batik JAR: {self._jar_path_cache}")
+                                return self._jar_path_cache
+        except Exception as e:
+            self.logger.debug(f"Batik cache lookup failed: {e}")
+
         search_paths = []
-        
+
         # 1. 配置文件指定路径
         if self.batik_config.batik_jar_path:
             search_paths.append(self.batik_config.batik_jar_path)
-        
+
         # 2. 环境变量
         env_path = os.environ.get('BATIK_JAR')
         if env_path:
             search_paths.append(env_path)
-        
+
         # 3. 项目目录下的tools/batik-lib/batik-all.jar
         project_tools_path = os.path.join(os.path.dirname(__file__), '..', '..', 'tools', self.BATIK_LIB_DIR_NAME, self.BATIK_ALL_JAR_NAME)
         search_paths.append(os.path.abspath(project_tools_path))
-        
+
         # 4. 当前目录
         search_paths.append(os.path.join(os.getcwd(), self.BATIK_ALL_JAR_NAME))
-        
+
         # 查找JAR文件
         for path in search_paths:
             if os.path.isfile(path):
                 self._jar_path_cache = path
                 self.logger.info(f"找到Batik JAR: {path}")
                 return path
-        
+
         self.logger.warning(f"未找到Batik JAR包，搜索路径: {search_paths}")
         return None
 
