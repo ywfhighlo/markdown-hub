@@ -645,25 +645,30 @@ class BatikConverter(BaseConverter):
     def _log_dependency_status(self, status: BatikDependencyStatus) -> None:
         """记录依赖状态日志"""
         self.logger.info("=== Batik依赖检查结果 ===")
-        
+
         if status.java_available:
             self.logger.info(f"✓ Java: {status.java_version}")
         else:
             self.logger.error("✗ Java: 未安装或不可用")
-        
+            try:
+                from .dep_check import install_hint_for
+                self.logger.error(f"  安装指引: {install_hint_for('java')}")
+            except Exception:
+                pass
+
         if status.batik_jar_path:
             self.logger.info(f"✓ Batik JAR: {status.batik_jar_path}")
         else:
             self.logger.error("✗ Batik JAR: 未找到")
-        
+
         if status.batik_lib_path:
             self.logger.info(f"✓ Batik Lib: {status.batik_lib_path}")
         else:
             self.logger.error("✗ Batik Lib: 未找到完整的依赖库")
-        
+
         if status.is_ready:
             self.logger.info("✓ Batik转换环境就绪")
         else:
             self.logger.error("✗ Batik转换环境未就绪，请安装缺失的依赖")
-        
+
         self.logger.info("=" * 30)

@@ -644,26 +644,36 @@ skinparam defaultFontSize 12"""
     def _log_dependency_status(self, status: DependencyStatus) -> None:
         """记录依赖状态日志"""
         self.logger.info("=== PlantUML依赖检查结果 ===")
-        
+
         if status.java_available:
             self.logger.info(f"✓ Java: {status.java_version}")
         else:
             self.logger.error("✗ Java: 未安装或不可用")
-        
+            try:
+                from .dep_check import install_hint_for
+                self.logger.error(f"  安装指引: {install_hint_for('java')}")
+            except Exception:
+                pass
+
         if status.plantuml_jar_path:
             version_info = f" ({status.plantuml_version})" if status.plantuml_version else ""
             self.logger.info(f"✓ PlantUML JAR: {status.plantuml_jar_path}{version_info}")
         else:
             self.logger.error("✗ PlantUML JAR: 未找到")
-        
+
         if status.graphviz_available:
             self.logger.info(f"✓ Graphviz: {status.graphviz_version}")
         else:
             self.logger.warning("⚠ Graphviz: 未安装（某些图表类型可能无法正常显示）")
-        
+            try:
+                from .dep_check import install_hint_for
+                self.logger.warning(f"  安装指引: {install_hint_for('graphviz')}")
+            except Exception:
+                pass
+
         if status.is_ready:
             self.logger.info("✓ PlantUML转换环境就绪")
         else:
             self.logger.error("✗ PlantUML转换环境未就绪，请安装缺失的依赖")
-        
+
         self.logger.info("=" * 30)

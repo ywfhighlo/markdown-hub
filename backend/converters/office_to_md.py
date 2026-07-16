@@ -170,6 +170,11 @@ class OfficeToMdConverter(BaseConverter):
                           check=True)
         except (subprocess.SubprocessError, FileNotFoundError):
             self.logger.info("tesseract未安装，扫描版PDF的OCR功能不可用")
+            try:
+                from .dep_check import install_hint_for
+                self.logger.info(f"  安装指引: {install_hint_for('tesseract')}")
+            except Exception:
+                pass
 
     def convert(self, input_path: str) -> List[str]:
         supported_extensions = ['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.xlsm',

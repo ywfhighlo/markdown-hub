@@ -257,6 +257,16 @@ _CMD_INSTALL_HINTS: Dict[str, str] = {
         "darwin":  "brew install --cask drawio",
         "linux":   "下载 https://github.com/jgraph/drawio-desktop/releases",
     },
+    "graphviz": {
+        "win32":   "下载 https://graphviz.org/download/ 并将 bin 加入 PATH",
+        "darwin":  "brew install graphviz",
+        "linux":   "sudo apt install graphviz   # 或 dnf install graphviz",
+    },
+    "soffice": {
+        "win32":   "下载 https://www.libreoffice.org/download/",
+        "darwin":  "brew install --cask libreoffice",
+        "linux":   "sudo apt install libreoffice   # 或 dnf install libreoffice",
+    },
 }
 
 
