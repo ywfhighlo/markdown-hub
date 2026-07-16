@@ -184,9 +184,15 @@ def ensure_resource(spec: ResourceSpec) -> Optional[Path]:
 
     try:
         # For "raw" archive format, the downloaded file IS the resource.
-        # Move it into place and write the version marker.
+        # For PlantUML, the URL serves a .jar but the download may arrive
+        # with a different filename (e.g. "plantuml.download" from our tmp
+        # file). We rename to a canonical "<spec.name>.<ext>" so callers
+        # can find the file by predictable name.
         if spec.archive == "raw":
-            target = cache_path(spec) / tmp.name
+            # Preserve the source extension if it has one
+            src_ext = Path(spec.url.split("/")[-1].split("?")[0]).suffix
+            canonical_name = f"{spec.name}{src_ext}" if src_ext else f"{spec.name}.bin"
+            target = cache_path(spec) / canonical_name
             shutil.move(str(tmp), str(target))
         else:
             _extract(tmp, cache_path(spec), spec.archive)
@@ -201,6 +207,30 @@ def ensure_resource(spec: ResourceSpec) -> Optional[Path]:
 
     logger.info(f"Resource {spec.name} {spec.version} ready at {cache_path(spec)}")
     return cache_path(spec)
+
+
+def get_poppler_bin_path() -> Optional[Path]:
+    """Return the path to the Poppler ``bin`` directory (containing pdftoppm).
+
+    Triggers an auto-download on Windows when the resource is not yet cached.
+    Returns ``None`` on non-Windows platforms (where ``_poppler_url()`` is
+    empty and we rely on the system package manager), or if the download
+    fails — the caller should then let ``pdf2image`` fall back to PATH.
+
+    The oschwartz10612 Windows release extracts as
+    ``poppler-<ver>/Library/bin/pdftoppm.exe``; we ``rglob`` for the
+    executable rather than hard-coding the path so future layout changes
+    don't break discovery.
+    """
+    cached = ensure_resource(POPPLER_SPEC)
+    if not cached:
+        return None
+    exe_name = "pdftoppm.exe" if platform.system() == "Windows" else "pdftoppm"
+    for candidate in cached.rglob(exe_name):
+        if candidate.is_file():
+            return candidate.parent
+    logger.warning(f"Poppler cache populated but {exe_name} not found under {cached}")
+    return None
 
 
 def clear_cache() -> int:

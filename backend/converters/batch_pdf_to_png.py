@@ -20,7 +20,19 @@ def batch_convert(directory, poppler_path=None):
         return
 
     print(f"Found {len(pdf_files)} PDF files in {directory}...")
-    
+
+    # Resolve poppler_path: explicit arg/env wins, then on-demand cache
+    # (auto-downloads on Windows), finally let pdf2image try PATH.
+    if not poppler_path:
+        try:
+            from backend.resource_manager import get_poppler_bin_path
+            cached_bin = get_poppler_bin_path()
+            if cached_bin:
+                poppler_path = str(cached_bin)
+                print(f"Using cached Poppler from: {poppler_path}")
+        except Exception as e:
+            print(f"Poppler cache lookup failed: {e}")
+
     success_count = 0
     fail_count = 0
 

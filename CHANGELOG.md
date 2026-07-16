@@ -24,11 +24,12 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - DOCX → Markdown nested lists now preserve indentation from Word's level suffix (`List Bullet 2` becomes a 2-space-indented sub-item)
 - DOCX → Markdown inline images are now extracted to `<docx>_images/` and referenced with `![](path)` — previously dropped entirely
 - Batch conversion: emits a per-file summary to the output channel showing succeeded/failed counts and the reason for each failure — previously failed files were silently skipped
+- PDF OCR (`DOCX→MD _ocr_pdf`) and batch PDF→PNG: when no explicit `--poppler-path` / `POPPLER_PATH` is configured, the converters now consult the on-demand cache (auto-downloading Poppler on Windows) before letting pdf2image fall back to PATH. Closes a regression introduced when Poppler was removed from the VSIX — Windows users without a system poppler install had silently lost PDF OCR and PDF→PNG.
 
 ### Changed
 - HTML → Markdown: output style normalized to match the rest of the project (`*italic*` instead of `_italic_`, `- item` instead of `* item`, top-level 2-space indent removed)
 - VSIX install size: PlantUML jar (21 MB) is no longer bundled — it's downloaded on-demand to `~/.markdown-hub/cache/plantuml/` on first use. Failed downloads fall back to the previous behavior (user-configured / system path). Disable auto-download by setting `MARKDOWN_HUB_NO_AUTO_DOWNLOAD=1`.
-- VSIX install size: Batik (5 MB) is no longer bundled — same lazy-download pattern. VSIX now sits at ~1.8 MB before any cache warm-up, down from 41 MB. Poppler (48 MB, Windows-only) is still bundled and will be moved in a follow-up.
+- VSIX install size: Batik (5 MB) is no longer bundled — same lazy-download pattern. Poppler (48 MB, Windows-only) is now also lazy-downloaded: on first PDF→PNG / PDF OCR use, the Windows build downloads to `~/.markdown-hub/cache/poppler/` and is reused afterwards; macOS/Linux keep using the system-installed poppler (brew/apt) since `_poppler_url()` only serves Windows. The same `MARKDOWN_HUB_NO_AUTO_DOWNLOAD=1` env var disables all three downloads. VSIX now sits at ~1.8 MB before any cache warm-up, down from 41 MB.
 
 ### Added
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text

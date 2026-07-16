@@ -1035,7 +1035,20 @@ class OfficeToMdConverter(BaseConverter):
             if self.tesseract_cmd:
                 pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
 
-            images = convert_from_path(pdf_path, poppler_path=self.poppler_path)
+            # Resolve poppler_path: explicit config/env wins, then on-demand
+            # cache (auto-downloads on Windows), finally let pdf2image try PATH.
+            poppler_path = self.poppler_path
+            if not poppler_path:
+                try:
+                    from backend.resource_manager import get_poppler_bin_path
+                    cached_bin = get_poppler_bin_path()
+                    if cached_bin:
+                        poppler_path = str(cached_bin)
+                        self.logger.info(f"从缓存获取 Poppler bin: {poppler_path}")
+                except Exception as e:
+                    self.logger.debug(f"Poppler cache lookup failed: {e}")
+
+            images = convert_from_path(pdf_path, poppler_path=poppler_path)
             text_parts = []
             detected_lang = None
 
