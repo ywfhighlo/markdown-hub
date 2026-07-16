@@ -130,6 +130,8 @@ class OfficeToMdConverter(BaseConverter):
         super().__init__(output_dir, **kwargs)
         self.poppler_path = kwargs.get('poppler_path')
         self.tesseract_cmd = kwargs.get('tesseract_cmd')
+        self._last_skip_reason = None
+        self._batch_report = []
         self._check_dependencies()
 
     def _check_dependencies(self):
@@ -178,6 +180,8 @@ class OfficeToMdConverter(BaseConverter):
 
         output_files = []
         skipped_reasons = []
+        # Per-file batch report: (filename, status, reason or output_path)
+        self._batch_report: List[tuple] = []
 
         if os.path.isfile(input_path):
             result = self._convert_single_file(input_path)
@@ -192,16 +196,41 @@ class OfficeToMdConverter(BaseConverter):
                 raise ValueError(f"目录中未找到支持的Office文件: {input_path}")
 
             for office_file in office_files:
+                reason_before = self._last_skip_reason
                 result = self._convert_single_file(office_file)
                 if result:
                     output_files.append(result)
+                    self._batch_report.append((office_file, 'success', result))
+                else:
+                    # 批量模式：记录每个失败的文件 + 原因
+                    reason = self._last_skip_reason or reason_before or "未知错误"
+                    self._batch_report.append((office_file, 'failed', reason))
                 # 批量模式：跳过缺依赖的文件是正常的，不阻断其他文件
+
+        # 批量模式下，输出报告到 logger 供前端输出面板读取
+        if self._batch_report:
+            self._log_batch_report()
 
         # 单文件模式下如果有跳过原因且无输出，抛出明确错误
         if not output_files and skipped_reasons:
             raise RuntimeError(f"依赖缺失：{'; '.join(skipped_reasons)}")
 
         return output_files
+
+    def _log_batch_report(self):
+        """Emit a per-file summary of the batch conversion to the output channel."""
+        if not self._batch_report:
+            return
+        success_count = sum(1 for _, s, _ in self._batch_report if s == 'success')
+        failed_count = sum(1 for _, s, _ in self._batch_report if s == 'failed')
+        self.logger.info("=" * 60)
+        self.logger.info(f"Batch conversion report: {success_count} succeeded, {failed_count} failed")
+        if failed_count:
+            self.logger.info("Failed files:")
+            for fname, status, reason in self._batch_report:
+                if status == 'failed':
+                    self.logger.info(f"  - {os.path.basename(fname)}: {reason}")
+        self.logger.info("=" * 60)
 
     def _convert_single_file(self, file_path: str) -> Optional[str]:
         self._last_skip_reason = None
@@ -1209,18 +1238,37 @@ class OfficeToMdConverter(BaseConverter):
             try:
                 return self._docx_to_markdown_structured(docx_path)
             except Exception as e:
+                self._last_skip_reason = f"python-docx 解析失败: {e}"
                 self.logger.warning(f"python-docx extraction failed, falling back to docx2txt: {e}")
 
         # Fallback: docx2txt (plain text, no structure)
         if docx2txt is None:
-            self.logger.error("Neither python-docx nor docx2txt is installed; cannot process Word files")
+            msg = "Neither python-docx nor docx2txt is installed; cannot process Word files"
+            self._last_skip_reason = msg
+            self.logger.error(msg)
             return "## Word content extraction failed\n\nInstall one of: pip install python-docx  (or)  pip install docx2txt"
 
         try:
             return docx2txt.process(docx_path)
         except Exception as e:
+            self._last_skip_reason = f"docx2txt 解析失败: {e}"
             self.logger.error(f"Failed to process Word document {docx_path}: {e}")
             return ""
+
+    def _list_level_from_style(self, style_name: str, base_prefix: str) -> int:
+        """Extract the nesting level from a Word list style name.
+
+        Word names nested list styles as "<base_prefix> 2" / "<base_prefix> 3"
+        for level 1, 2, 3... (the base style itself is level 0). If the
+        suffix is missing, the level is 0.
+        """
+        suffix = style_name[len(base_prefix):].strip()
+        if not suffix:
+            return 0
+        try:
+            return max(0, int(suffix) - 1)
+        except ValueError:
+            return 0
 
     def _docx_to_markdown_structured(self, docx_path: Path) -> str:
         """Walk a DOCX body in document order, emitting Markdown."""
@@ -1255,9 +1303,16 @@ class OfficeToMdConverter(BaseConverter):
                 return None
 
             if style_name.startswith('List Bullet'):
-                return f"- {text}"
+                # Style name "List Bullet" / "List Bullet 2" / "List Bullet 3"
+                # encodes the nesting level — use it to indent.
+                level = self._list_level_from_style(style_name, 'List Bullet')
+                indent = '  ' * level  # 2 spaces per level
+                marker = '-'
+                return f"{indent}{marker} {text}"
             if style_name.startswith('List Number'):
-                return f"1. {text}"
+                level = self._list_level_from_style(style_name, 'List Number')
+                indent = '  ' * level
+                return f"{indent}1. {text}"
 
             # Quote
             if style_name == 'Quote' or style_name == 'Intense Quote':
@@ -1308,11 +1363,37 @@ class OfficeToMdConverter(BaseConverter):
         body = doc.element.body
         para_idx = 0
         table_idx = 0
+        # Image extraction: save inline images to output_dir/<stem>_images/ and
+        # reference them from the markdown. Track counter across the walk.
+        images_dir = docx_path.parent / f"{docx_path.stem}_images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        image_counter = 0
+
         for child in body.iterchildren():
             tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
             if tag == 'p':
                 if para_idx < len(doc.paragraphs):
-                    md_line = para_to_md(doc.paragraphs[para_idx])
+                    para = doc.paragraphs[para_idx]
+                    # Check for inline images in this paragraph
+                    for run in para.runs:
+                        for blip in run._r.findall(
+                            './/{http://schemas.openxmlformats.org/drawingml/2006/main}blip'
+                        ):
+                            rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                            if rid and rid in para.part.rels:
+                                rel = para.part.rels[rid]
+                                if 'image' in rel.reltype:
+                                    image_counter += 1
+                                    ext = rel.target_ref.split('.')[-1] or 'png'
+                                    img_filename = f"image{image_counter}.{ext}"
+                                    img_path = images_dir / img_filename
+                                    try:
+                                        with open(img_path, 'wb') as f:
+                                            f.write(rel.target_part.blob)
+                                        lines.append(f"![{img_filename}]({images_dir.name}/{img_filename})")
+                                    except Exception as e:
+                                        self.logger.warning(f"Failed to extract image: {e}")
+                    md_line = para_to_md(para)
                     if md_line is not None:
                         lines.append(md_line)
                     para_idx += 1
@@ -1438,19 +1519,64 @@ class OfficeToMdConverter(BaseConverter):
                 html_content = f.read()
             h = html2text.HTML2Text()
             h.ignore_links = False
+            h.unicode_snob = True       # Use ASCII bullet '*' and plain '|' tables
+            h.bypass_tables = False     # Emit GFM pipe tables
+            h.ignore_images = True      # Image alt is noise in markdown context
             md_text = h.handle(html_content)
-            return md_text
+            return self._normalize_html_to_md(md_text)
         except Exception as e:
             self.logger.error(f"处理HTML文档 {html_path} 时出错: {str(e)}")
             return ""
 
+    def _normalize_html_to_md(self, md: str) -> str:
+        """Normalize html2text output to match the rest of the project.
+
+        - '* item'   → '- item' (project standard)
+        - '_italic_' → '*italic*' (GFM standard)
+        - '  ' (2-space top-level indent from html2text unicode_snob) → ''
+        """
+        lines = md.split('\n')
+        out = []
+        for line in lines:
+            # Strip html2text's 2-space top-level list indent (e.g. "  - item" → "- item")
+            stripped_leading = line.lstrip(' ')
+            leading_spaces = len(line) - len(stripped_leading)
+            # If a 2-space indent is at the very top level (no further nesting),
+            # remove it. Deeper nesting kept as-is.
+            if leading_spaces == 2 and stripped_leading.startswith(('- ', '* ', '1. ', '1) ')):
+                line = stripped_leading
+            # Bullet list marker: '*' → '-'
+            line = re.sub(r'^(\s*)\*\s', r'\1- ', line)
+            # Italic: _text_ → *text*
+            line = re.sub(r'(?<!\w)_([^_\n]+?)_(?!\w)', r'*\1*', line)
+            out.append(line)
+        return '\n'.join(out)
+
     def _convert_to_markdown(self, text: str) -> str:
+        """Post-process the raw text from python-docx.
+
+        python-docx returns every numbered list item as "1." (it doesn't track
+        sequential numbering through style changes). We renumber consecutive
+        runs of "N. " prefixes to produce 1./2./3. so the output reads as a
+        proper ordered list.
+        """
         md_text = text
-
-        md_text = re.sub(r'^\s*(\d+)\.\s+', r'\1. ', md_text, flags=re.MULTILINE)
-
-        md_text = re.sub(r'\*([^*]+)\*', r'**\1**', md_text)
-
+        lines = md_text.split('\n')
+        out_lines = []
+        n = 0
+        for line in lines:
+            m = re.match(r'^(\s*)\d+\.\s+', line)
+            if m:
+                n += 1
+                out_lines.append(f"{m.group(1)}{n}. {line[m.end():]}")
+            elif line.strip() == '':
+                # Blank line: preserve spacing, do NOT reset counter
+                out_lines.append(line)
+            else:
+                # Non-blank non-list line: resets the counter
+                n = 0
+                out_lines.append(line)
+        md_text = '\n'.join(out_lines)
         return md_text
 
     def _optimize_markdown(self, md_text: str) -> str:

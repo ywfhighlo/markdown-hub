@@ -20,6 +20,13 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - Clearer, more accurate error messages for missing dependencies (Pandoc, Word/LibreOffice, PyMuPDF)
 - DOCX → Markdown: horizontally-merged table cells no longer emit duplicate content (python-docx returns the same cell for each grid column of a merge; we now dedupe by `<w:tc>` element)
 - Dependency detection: `python-pptx` and `Pillow` are now correctly recognized when installed via pip (their pip name differs from their import name — `pptx` and `PIL` respectively; previously reported as missing, blocking PPTX and image-related conversions)
+- DOCX → Markdown numbered lists now renumber consecutive items (1./2./3. instead of 1./1./1. — python-docx returns every numbered item as "1.")
+- DOCX → Markdown nested lists now preserve indentation from Word's level suffix (`List Bullet 2` becomes a 2-space-indented sub-item)
+- DOCX → Markdown inline images are now extracted to `<docx>_images/` and referenced with `![](path)` — previously dropped entirely
+- Batch conversion: emits a per-file summary to the output channel showing succeeded/failed counts and the reason for each failure — previously failed files were silently skipped
+
+### Changed
+- HTML → Markdown: output style normalized to match the rest of the project (`*italic*` instead of `_italic_`, `- item` instead of `* item`, top-level 2-space indent removed)
 
 ### Added
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text
