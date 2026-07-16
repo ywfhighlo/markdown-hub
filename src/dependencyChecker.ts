@@ -92,9 +92,60 @@ const FEATURE_DEFS: Record<string, FeatureDef> = {
 // Helpers
 // ─────────────────────────────────────────
 
-function checkCommandExists(command: string): boolean {
+/** Three-platform install hints, kept in sync with backend dep_check._CMD_INSTALL_HINTS. */
+const CMD_INSTALL_HINTS: Record<string, Record<string, string>> = {
+    pandoc: {
+        win32:  '下载 https://pandoc.org/installing.html',
+        darwin: 'brew install pandoc',
+        linux:  'sudo apt install pandoc   # 或 dnf install pandoc',
+    },
+    tesseract: {
+        win32:  '下载 https://github.com/UB-Mannheim/tesseract/wiki',
+        darwin: 'brew install tesseract',
+        linux:  'sudo apt install tesseract-ocr',
+    },
+    java: {
+        win32:  '下载 https://adoptium.net/',
+        darwin: 'brew install openjdk',
+        linux:  'sudo apt install openjdk-11-jdk',
+    },
+    graphviz: {
+        win32:  '下载 https://graphviz.org/download/ 并将 bin 加入 PATH',
+        darwin: 'brew install graphviz',
+        linux:  'sudo apt install graphviz   # 或 dnf install graphviz',
+    },
+    poppler: {
+        win32:  '首用时自动下载；或手动下载 https://github.com/oschwartz10612/poppler-windows/releases',
+        darwin: 'brew install poppler',
+        linux:  'sudo apt install poppler-utils',
+    },
+    drawio: {
+        win32:  '下载 https://github.com/jgraph/drawio-desktop/releases',
+        darwin: 'brew install --cask drawio',
+        linux:  '下载 https://github.com/jgraph/drawio-desktop/releases',
+    },
+    mmdc: {
+        win32:  'npm install -g @mermaid-js/mermaid-cli',
+        darwin: 'npm install -g @mermaid-js/mermaid-cli',
+        linux:  'npm install -g @mermaid-js/mermaid-cli',
+    },
+};
+
+function platformKey(): 'win32' | 'darwin' | 'linux' {
+    if (process.platform.startsWith('win')) return 'win32';
+    if (process.platform === 'darwin') return 'darwin';
+    return 'linux';
+}
+
+function installHintFor(cmd: string): string {
+    const hints = CMD_INSTALL_HINTS[cmd];
+    if (!hints) return cmd;
+    return hints[platformKey()] || hints.linux || cmd;
+}
+
+function checkCommandExists(command: string, versionFlag: string = '--version'): boolean {
     try {
-        execSync(`${command} --version`, { stdio: 'ignore' });
+        execSync(`${command} ${versionFlag}`, { stdio: 'ignore' });
         return true;
     } catch {
         return false;
@@ -148,14 +199,7 @@ export async function checkDependencies(): Promise<DependencyStatus> {
             missingCmds,
             installHint: [
                 ...(missingLibs.length > 0 ? [pipInstallCmd(missingLibs)] : []),
-                ...(missingCmds.length > 0 ? [missingCmds.map(cmd => {
-                    switch (cmd) {
-                        case 'pandoc': return process.platform === 'darwin'
-                            ? 'brew install pandoc'
-                            : 'https://pandoc.org/installing.html';
-                        default: return cmd;
-                    }
-                }).join(', ')] : []),
+                ...(missingCmds.length > 0 ? [missingCmds.map(cmd => installHintFor(cmd)).join(', ')] : []),
             ].join(' && ') || undefined,
         };
     }
@@ -212,15 +256,17 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
     }
 
     // Optional external tools (diagram-related; not tied to a specific conversion feature)
-    const optionalTools: Array<{ name: string; cmd: string; hint: string }> = [
-        { name: 'Tesseract OCR', cmd: 'tesseract', hint: process.platform === 'darwin' ? 'brew install tesseract' : 'https://github.com/UB-Mannheim/tesseract/wiki' },
-        { name: 'Java', cmd: 'java', hint: process.platform === 'darwin' ? 'brew install openjdk' : 'https://adoptium.net/' },
-        { name: 'draw.io', cmd: 'drawio', hint: process.platform === 'darwin' ? 'brew install --cask drawio' : 'https://github.com/jgraph/drawio-desktop/releases' },
-        { name: 'Mermaid CLI', cmd: 'mmdc', hint: 'npm install -g @mermaid-js/mermaid-cli' },
+    const optionalTools: Array<{ name: string; cmd: string; hint: string; versionFlag?: string }> = [
+        { name: 'Tesseract OCR', cmd: 'tesseract', hint: installHintFor('tesseract') },
+        { name: 'Java', cmd: 'java', hint: installHintFor('java') },
+        { name: 'Graphviz', cmd: 'dot', hint: installHintFor('graphviz'), versionFlag: '-V' },
+        { name: 'draw.io', cmd: 'drawio', hint: installHintFor('drawio') },
+        { name: 'Mermaid CLI', cmd: 'mmdc', hint: installHintFor('mmdc') },
     ];
 
     for (const tool of optionalTools) {
-        if (checkCommandExists(tool.cmd) || checkCommandExists(tool.cmd === 'drawio' ? 'draw.io' : tool.cmd)) {
+        const flag = tool.versionFlag || '--version';
+        if (checkCommandExists(tool.cmd, flag) || checkCommandExists(tool.cmd === 'drawio' ? 'draw.io' : tool.cmd, flag)) {
             okItems.push(`✅ ${tool.name}`);
         } else {
             issues.push({
