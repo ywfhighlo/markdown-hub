@@ -24,6 +24,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - HTML → Markdown conversion (right-click any `.html` or `.htm` file)
 - DOCX → Markdown now preserves headings, bold/italic, tables, and lists (was plain text only)
 - Markdown → EPUB 3 conversion (right-click → "Convert to EPUB"): generates proper EPUB with TOC, navigation, and MathML math rendering for e-readers
+- Markdown → PPTX now properly renders markdown syntax: H1/H2/H3 as sized headings, `**bold**` / `*italic*` / `` `code` `` as run-level formatting, GFM tables as real python-pptx tables, code blocks on a full-width black background, bullet/numbered lists, and blockquotes with a left bar — was previously dumping raw markdown text
 
 ## [0.3.5] - 2025-09-30
 

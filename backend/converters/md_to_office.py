@@ -463,48 +463,95 @@ class MdToOfficeConverter(BaseConverter):
                     self.logger.warning(f"Failed to remove temp file {temp_file}: {e}")
     
     def _process_full_mode(self, input_file: str, output_file_path: Path) -> Optional[str]:
-        """处理full模式的PPTX转换（使用python-pptx创建多张幻灯片）"""
+        """处理full模式的PPTX转换（使用python-pptx创建多张幻灯片）
+
+        New implementation: parses markdown into typed blocks, then walks
+        the block list creating slides based on heading level. Each H1/H2
+        starts a new slide; code blocks and images get their own slide;
+        paragraphs/lists/quotes/tables accumulate on the current slide.
+        """
         if not _pptx_available():
             self.logger.error("python-pptx库未安装，无法使用full模式")
             return None
-        
+
         self.logger.info(f"使用full模式转换: {input_file}")
-        
+
         try:
             # 读取并预处理Markdown内容
             processed_content, temp_files = self._preprocess_markdown(input_file)
             if processed_content is None:
                 return None
-            
+
+            # 解析为 block 列表
+            blocks = self._parse_to_blocks(processed_content)
+            if not blocks:
+                self.logger.warning(f"No content blocks found in {input_file}")
+                return None
+
             # 提取标题
             input_path = Path(input_file)
             title = self._get_title_from_md(processed_content, input_path)
-            
-            # 解析内容
-            sections = self._parse_full_mode(processed_content, title)
-            
+            # 如果没有 H1，把 filename 头部用作封面
+            first_h1 = next((b for b in blocks if b['type'] == 'h1'), None)
+            cover_title = title if title else (first_h1['text'] if first_h1 else input_path.stem)
+
             # 创建演示文稿
             prs = self._create_presentation_from_template()
-            
-            # 获取Markdown文件所在目录
-            md_dir = input_path.parent
-            
-            # 处理每个section
-            for section in sections:
-                if section['type'] == 'content':
-                    if section['level'] == 1 and not section['content']:
-                        # 标题页
-                        self._create_title_slide(prs, section['title'])
-                    else:
-                        # 内容页
-                        self._create_content_slide(prs, section, md_dir)
-            
+
+            # Set md_dir on self for image resolution
+            self._current_md_dir = input_path.parent
+
+            # 封面页
+            try:
+                cover_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                self._render_cover(cover_slide, cover_title)
+            except Exception as e:
+                self.logger.warning(f"Failed to render cover: {e}")
+
+            # 跳过第一个 H1（如果它的文本==cover_title，避免与封面重复）
+            skip_first_h1 = first_h1 is not None and first_h1['text'] == cover_title
+
+            current_slide = None
+            for i, block in enumerate(blocks):
+                if skip_first_h1 and i == blocks.index(first_h1):
+                    skip_first_h1 = False
+                    continue
+                btype = block.get('type')
+                if btype in ('h1', 'h2'):
+                    # New slide for H1/H2
+                    try:
+                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        self._render_block(prs, current_slide, block)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to render heading: {e}")
+                elif btype == 'code':
+                    # Code block: own slide
+                    try:
+                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        self._render_block(prs, current_slide, block)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to render code: {e}")
+                elif btype == 'image':
+                    # Image: own slide
+                    try:
+                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        self._render_block(prs, current_slide, block)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to render image: {e}")
+                else:
+                    # Other blocks (p, list, quote, table, h3+, hr): accumulate
+                    if current_slide is None:
+                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                    try:
+                        self._render_block(prs, current_slide, block)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to render block: {e}")
+
             # 保存演示文稿
             prs.save(str(output_file_path))
-            
             self.logger.info(f"Successfully converted {input_file} to {output_file_path}")
             return str(output_file_path)
-            
+
         except Exception as e:
             self.logger.error(f"Failed during full mode conversion: {e}")
             return None
@@ -594,9 +641,667 @@ class MdToOfficeConverter(BaseConverter):
                     'type': 'svg'
                 }
                 sections.append(svg_section)
-        
+
         return sections
-    
+
+    def _parse_to_blocks(self, content: str) -> List[dict]:
+        """Parse Markdown content into a flat list of typed blocks.
+
+        Each block is a dict with a 'type' key. Inline formatting (bold/italic/code/links)
+        is pre-parsed into a 'runs' list of {'text', 'bold', 'italic', 'code'} dicts.
+
+        Block types:
+            - 'h1' / 'h2' / 'h3' / 'h4' / 'h5' / 'h6': heading; {'text': str}
+            - 'p':   paragraph;                {'runs': [{'text', 'bold', 'italic', 'code', 'link'}, ...]}
+            - 'list': bulleted list;          {'items': [{'runs': [...], 'level': int}, ...]}
+            - 'code': fenced code block;      {'lang': str, 'text': str}
+            - 'quote': blockquote;            {'runs': [...]}
+            - 'table': GFM table;             {'rows': [[{'text', 'bold', ...}]], 'aligns': [str]}
+            - 'image': image embed;           {'path': str, 'alt': str}
+        """
+        blocks: List[dict] = []
+
+        # Convert to HTML via python-markdown (already in requirements)
+        import markdown as _md_lib
+        try:
+            html = _md_lib.markdown(
+                content,
+                extensions=['tables', 'fenced_code'],
+                output_format='html',
+            )
+        except Exception as e:
+            self.logger.error(f"Markdown parse failed, falling back to plain: {e}")
+            # Fallback: one paragraph with the whole content
+            return [{'type': 'p', 'runs': self._inline_to_runs(content)}]
+
+        # Parse HTML with lxml (already in requirements)
+        from lxml import html as _lxml_html
+        try:
+            root = _lxml_html.fragment_fromstring(html, create_parent='div')
+        except Exception as e:
+            self.logger.error(f"HTML parse failed: {e}")
+            return [{'type': 'p', 'runs': self._inline_to_runs(content)}]
+
+        # Image markdown reference: ![alt](path)
+        image_pattern = re.compile(r'!\[([^\]]*)\]\(([^\)]+)\)')
+
+        for elem in root:
+            # Skip raw text nodes outside tags
+            if isinstance(elem, str):
+                stripped = elem.strip()
+                if stripped:
+                    blocks.append({'type': 'p', 'runs': self._inline_to_runs(stripped)})
+                continue
+
+            blocks.extend(self._process_html_node(elem))
+
+        return blocks
+
+    def _walk_html(self, node) -> List[dict]:
+        """Recursively walk an HTML element, converting to runs with inline annotations."""
+        runs = []
+        if node.tag in ('strong', 'b'):
+            children_runs = []
+            for child in node:
+                children_runs.extend(self._walk_html(child))
+            if not children_runs and node.text:
+                children_runs = [{'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
+            runs.extend(self._annotate_runs(children_runs, bold=True))
+            if node.tail:
+                runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
+        elif node.tag in ('em', 'i'):
+            children_runs = []
+            for child in node:
+                children_runs.extend(self._walk_html(child))
+            if not children_runs and node.text:
+                children_runs = [{'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
+            runs.extend(self._annotate_runs(children_runs, italic=True))
+            if node.tail:
+                runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
+        elif node.tag == 'code' and node.getparent() is not None and node.getparent().tag != 'pre':
+            children_runs = []
+            for child in node:
+                children_runs.extend(self._walk_html(child))
+            if not children_runs and node.text:
+                children_runs = [{'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
+            runs.extend(self._annotate_runs(children_runs, code=True))
+            if node.tail:
+                runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
+        elif node.tag == 'a':
+            href = node.get('href', '')
+            text = node.text or ''
+            runs.append({'text': text, 'bold': False, 'italic': False, 'code': False, 'link': href})
+        elif node.tag == 'br':
+            runs.append({'text': '\n', 'bold': False, 'italic': False, 'code': False, 'link': None})
+        else:
+            # text node or other element
+            if node.text:
+                runs.append({'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None})
+            for child in node:
+                runs.extend(self._walk_html(child))
+            if node.tail:
+                runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
+        return runs
+
+    def _process_html_node(self, elem) -> List[dict]:
+        """Process a single HTML element into blocks (extracted from _parse_to_blocks loop)."""
+        blocks: List[dict] = []
+        tag = elem.tag
+        if tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+            level = int(tag[1])
+            text = (elem.text_content() or '').strip()
+            if text:
+                blocks.append({'type': tag, 'level': level, 'text': text})
+        elif tag == 'p':
+            runs = self._walk_html(elem)
+            runs = self._strip_empty_runs(runs)
+            if runs:
+                blocks.append({'type': 'p', 'runs': runs})
+        elif tag == 'pre':
+            # Code block: extract from <code> child
+            code_elem = elem.find('code')
+            if code_elem is not None:
+                text = code_elem.text or ''
+                # Class typically 'language-xxx'
+                lang = ''
+                classes = code_elem.get('class', '')
+                m = re.search(r'language-(\w+)', classes)
+                if m:
+                    lang = m.group(1)
+            else:
+                text = elem.text or ''
+                lang = ''
+            if text.strip():
+                blocks.append({'type': 'code', 'lang': lang, 'text': text.rstrip('\n')})
+        elif tag == 'blockquote':
+            runs = self._walk_html(elem)
+            runs = self._strip_empty_runs(runs)
+            if runs:
+                blocks.append({'type': 'quote', 'runs': runs})
+        elif tag == 'ul' or tag == 'ol':
+            items = []
+            list_type = tag  # 'ul' = bullet, 'ol' = numbered
+            for li in elem.findall('li'):
+                runs = self._walk_html(li)
+                runs = self._strip_empty_runs(runs)
+                # Detect level from nesting (li inside li)
+                level = 0
+                parent = li.getparent()
+                if parent is not None and parent.tag in ('ul', 'ol'):
+                    # Heuristic: depth-1 if parent is inside another li
+                    gp = parent.getparent()
+                    if gp is not None and gp.tag == 'li':
+                        level = 1
+                items.append({'runs': runs, 'level': level})
+            if items:
+                blocks.append({'type': 'list', 'style': list_type, 'items': items})
+        elif tag == 'table':
+            rows = []
+            aligns = []
+            # Extract column alignment from thead first row
+            thead = elem.find('thead')
+            if thead is not None:
+                first_tr = thead.find('tr')
+                if first_tr is not None:
+                    for th in first_tr.findall('th'):
+                        style = th.get('style', '') or th.get('align', '')
+                        aligns.append(self._parse_align(style))
+            tbody = elem.find('tbody')
+            body_trs = tbody.findall('tr') if tbody is not None else elem.findall('tr')
+            for tr in body_trs:
+                row_cells = []
+                for td in tr.findall('td'):
+                    runs = self._walk_html(td)
+                    runs = self._strip_empty_runs(runs)
+                    if not runs:
+                        runs = [{'text': '', 'bold': False, 'italic': False, 'code': False, 'link': None}]
+                    row_cells.append(runs)
+                rows.append(row_cells)
+            if not aligns and rows:
+                aligns = ['left'] * len(rows[0])
+            if rows:
+                blocks.append({'type': 'table', 'rows': rows, 'aligns': aligns})
+        elif tag == 'img':
+            src = elem.get('src', '')
+            alt = elem.get('alt', '')
+            if src:
+                blocks.append({'type': 'image', 'path': src, 'alt': alt})
+        elif tag == 'hr':
+            blocks.append({'type': 'hr'})
+        elif tag == 'div' or tag == 'body':
+            # Transparent container: process children in-place
+            # to preserve inline formatting (bold/italic/code).
+            for child in elem:
+                if isinstance(child, str):
+                    if child.strip():
+                        blocks.append({'type': 'p', 'runs': self._inline_to_runs(child.strip())})
+                else:
+                    # Process child inline by re-iterating the main loop
+                    blocks.extend(self._process_html_node(child))
+        else:
+            # Unknown tag: descend into text content
+            text = (elem.text_content() or '').strip()
+            if text:
+                blocks.append({'type': 'p', 'runs': self._inline_to_runs(text)})
+
+        return blocks
+
+    def _annotate_runs(self, runs: List[dict], bold=False, italic=False, code=False) -> List[dict]:
+        """Apply bold/italic/code flags to a list of runs (annotation propagation)."""
+        out = []
+        for r in runs:
+            new_r = dict(r)
+            new_r['bold'] = new_r.get('bold', False) or bold
+            new_r['italic'] = new_r.get('italic', False) or italic
+            new_r['code'] = new_r.get('code', False) or code
+            out.append(new_r)
+        return out
+
+    def _strip_empty_runs(self, runs: List[dict]) -> List[dict]:
+        """Merge adjacent runs of same formatting; strip empty texts."""
+        cleaned = [r for r in runs if r.get('text', '')]
+        return cleaned
+
+    def _inline_to_runs(self, text: str) -> List[dict]:
+        """Parse plain text into a single run (used as fallback)."""
+        return [{'text': text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
+
+    def _strip_html_to_md(self, html: str) -> str:
+        """Rough HTML-to-Markdown conversion for nested element fallback.
+
+        We avoid pulling in BeautifulSoup by reusing the markdown lib's
+        `convertToMarkdown`-equivalent (the lib's reverse_direction is not
+        exposed, so we use a minimal regex-based stripping that's good enough
+        for nested elements we couldn't classify directly).
+        """
+        # Replace common tags with markdown equivalents
+        s = html
+        # Block tags become paragraph breaks
+        s = re.sub(r'</?(p|div|li|h[1-6]|blockquote|pre|tr|td|th)\b[^>]*>', '\n', s, flags=re.I)
+        # <br> -> newline
+        s = re.sub(r'<br\s*/?>', '\n', s, flags=re.I)
+        # <strong>/<b> -> **
+        s = re.sub(r'<(strong|b)\b[^>]*>(.*?)</\1>', r'**\2**', s, flags=re.I | re.S)
+        # <em>/<i> -> *
+        s = re.sub(r'<(em|i)\b[^>]*>(.*?)</\1>', r'*\2*', s, flags=re.I | re.S)
+        # <code> -> `
+        s = re.sub(r'<code\b[^>]*>(.*?)</code>', r'`\1`', s, flags=re.I | re.S)
+        # <a href="...">txt</a> -> [txt](url)
+        s = re.sub(r'<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)</a>', r'[\2](\1)', s, flags=re.I | re.S)
+        # <img src="..." alt="..."> -> ![alt](src)
+        s = re.sub(r'<img\s+[^>]*src="([^"]+)"[^>]*alt="([^"]*)"[^>]*/?>', r'![\2](\1)', s, flags=re.I)
+        s = re.sub(r'<img\s+[^>]*alt="([^"]*)"[^>]*src="([^"]+)"[^>]*/?>', r'![\1](\2)', s, flags=re.I)
+        # Strip remaining tags
+        s = re.sub(r'<[^>]+>', '', s)
+        # Decode common entities
+        s = s.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"')
+        return s.strip()
+
+    def _parse_align(self, style: str) -> str:
+        """Extract alignment from HTML style/align attribute."""
+        s = (style or '').lower()
+        if 'center' in s:
+            return 'center'
+        if 'right' in s:
+            return 'right'
+        return 'left'
+
+    # ─────────────────────────────────────────
+    # Block → slide rendering
+    # ─────────────────────────────────────────
+
+    def _add_runs_to_textbox(self, textbox, runs, default_size=18, default_bold=False, default_italic=False, default_color=None):
+        """Append a list of runs into an existing textbox's text frame.
+
+        Resets the text frame so we get a clean paragraph list. Inline
+        formatting (bold/italic/code) is applied per-run.
+        """
+        from pptx.util import Pt
+        frame = textbox.text_frame
+        frame.clear()
+        frame.word_wrap = True
+
+        if not runs:
+            return
+
+        # Group runs into paragraphs by '\n' inside text.
+        paragraphs = [[]]
+        for run in runs:
+            text = run.get('text', '')
+            parts = text.split('\n')
+            for i, part in enumerate(parts):
+                if i > 0:
+                    paragraphs.append([])
+                if part:
+                    paragraphs[-1].append({
+                        'text': part,
+                        'bold': run.get('bold', False),
+                        'italic': run.get('italic', False),
+                        'code': run.get('code', False),
+                        'link': run.get('link', None),
+                    })
+
+        for i, para_runs in enumerate(paragraphs):
+            if i == 0:
+                p = frame.paragraphs[0]
+            else:
+                p = frame.add_paragraph()
+            for r in para_runs:
+                run = p.add_run()
+                run.text = r['text']
+                run.font.size = Pt(default_size)
+                run.font.bold = default_bold or r['bold']
+                run.font.italic = default_italic or r['italic']
+                if r['code']:
+                    run.font.name = 'Consolas'
+                else:
+                    run.font.name = 'Calibri'
+                if default_color is not None:
+                    run.font.color.rgb = default_color
+
+    def _render_cover(self, slide, title_text):
+        """Render a simple cover slide with a centered title."""
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        tb = slide.shapes.add_textbox(
+            Inches(0.6), Inches(2.5),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.2),
+            Inches(2.0)
+        )
+        frame = tb.text_frame
+        frame.clear()
+        frame.word_wrap = True
+        p = frame.paragraphs[0]
+        from pptx.enum.text import PP_ALIGN
+        p.alignment = PP_ALIGN.CENTER
+        run = p.add_run()
+        run.text = title_text
+        run.font.size = Pt(44)
+        run.font.bold = True
+        run.font.color.rgb = RGBColor(50, 70, 110)
+        run.font.name = 'Calibri'
+
+    def _render_block(self, prs, slide, block):
+        """Render a single block onto an existing slide."""
+        btype = block.get('type')
+        try:
+            if btype in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                self._render_heading(slide, block)
+            elif btype == 'p':
+                self._render_paragraph(slide, block)
+            elif btype == 'list':
+                self._render_list(slide, block)
+            elif btype == 'code':
+                self._render_code(slide, block)
+            elif btype == 'quote':
+                self._render_quote(slide, block)
+            elif btype == 'table':
+                self._render_table(slide, block)
+            elif btype == 'image':
+                self._render_image(slide, block, prs)
+            elif btype == 'hr':
+                self._render_hr(slide)
+            else:
+                # Unknown block: dump as paragraph
+                runs = block.get('runs', self._inline_to_runs(str(block)))
+                tb = slide.shapes.add_textbox(Inches(0.6), Inches(1.2), prs.slide_width - Inches(1.2), Inches(5.0))
+                self._add_runs_to_textbox(tb, runs)
+        except Exception as e:
+            self.logger.warning(f"Failed to render block {btype}: {e}")
+
+    def _render_heading(self, slide, block):
+        from pptx.util import Inches, Pt
+        level = block.get('level', 1)
+        text = block.get('text', '')
+        # H1=32pt, H2=26pt, H3=22pt, etc.
+        size_map = {1: 32, 2: 26, 3: 22, 4: 20, 5: 18, 6: 16}
+        font_size = size_map.get(level, 16)
+
+        # Position: top of slide
+        top = Inches(0.4) if level <= 2 else Inches(1.4)
+        height = Inches(1.0) if level <= 2 else Inches(0.6)
+        tb = slide.shapes.add_textbox(
+            Inches(0.6), top,
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.2),
+            height
+        )
+        frame = tb.text_frame
+        frame.clear()
+        frame.word_wrap = True
+        p = frame.paragraphs[0]
+        run = p.add_run()
+        run.text = text
+        run.font.size = Pt(font_size)
+        run.font.bold = True
+        run.font.name = 'Calibri'
+
+    def _render_paragraph(self, slide, block):
+        from pptx.util import Inches, Pt
+        runs = block.get('runs', [])
+        if not runs:
+            return
+        tb = slide.shapes.add_textbox(
+            Inches(0.6), Inches(1.6),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.2),
+            Inches(5.4)
+        )
+        self._add_runs_to_textbox(tb, runs, default_size=18)
+
+    def _render_list(self, slide, block):
+        from pptx.util import Inches, Pt
+        from pptx.oxml.ns import qn
+        from lxml import etree
+        items = block.get('items', [])
+        if not items:
+            return
+        style = block.get('style', 'ul')
+
+        # First item: replace textbox[0] if empty, else add new
+        tb = slide.shapes.add_textbox(
+            Inches(0.6), Inches(1.6),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.2),
+            Inches(5.4)
+        )
+        frame = tb.text_frame
+        frame.clear()
+        frame.word_wrap = True
+
+        for i, item in enumerate(items):
+            if i == 0:
+                p = frame.paragraphs[0]
+            else:
+                p = frame.add_paragraph()
+            level = item.get('level', 0)
+            # Indent for nested levels
+            p.level = min(level, 4)
+            # Set bullet via XML
+            pPr = p._pPr
+            if pPr is None:
+                from pptx.oxml.ns import qn
+                pPr = p._p.get_or_add_pPr()
+            # Remove any existing bullet element
+            for tag in ('buNone', 'buChar', 'buAutoNum'):
+                for el in pPr.findall(qn(f'a:{tag}')):
+                    pPr.remove(el)
+            from lxml import etree
+            nsmap_a = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+            if style == 'ol':
+                # Numbered list
+                bu = etree.SubElement(pPr, f'{{{nsmap_a}}}buAutoNum')
+                bu.set('type', 'arabicPeriod')
+            else:
+                # Bulleted list (•)
+                bu = etree.SubElement(pPr, f'{{{nsmap_a}}}buChar')
+                bu.set('char', '•')
+            # Apply runs
+            for r in item.get('runs', []):
+                run = p.add_run()
+                run.text = r.get('text', '')
+                run.font.size = Pt(18)
+                run.font.bold = r.get('bold', False)
+                run.font.italic = r.get('italic', False)
+                if r.get('code'):
+                    run.font.name = 'Consolas'
+                else:
+                    run.font.name = 'Calibri'
+
+    def _render_code(self, slide, block):
+        """Render a code block: black background, white monospace, full slide width.
+
+        Per user choice, code blocks are rendered without trying to fit other
+        content on the same slide.
+        """
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
+        text = block.get('text', '')
+        lang = block.get('lang', '')
+
+        # Background: full-slide black rectangle
+        bg = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            0, 0,
+            slide.part.package.presentation_part.presentation.slide_width,
+            slide.part.package.presentation_part.presentation.slide_height
+        )
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = RGBColor(0, 0, 0)
+        bg.line.color.rgb = RGBColor(0, 0, 0)
+
+        # Optional language label in top-right
+        if lang:
+            label_tb = slide.shapes.add_textbox(
+                slide.part.package.presentation_part.presentation.slide_width - Inches(2),
+                Inches(0.2),
+                Inches(1.8), Inches(0.4)
+            )
+            lp = label_tb.text_frame.paragraphs[0]
+            lr = lp.add_run()
+            lr.text = lang
+            lr.font.size = Pt(12)
+            lr.font.color.rgb = RGBColor(180, 180, 180)
+            lr.font.italic = True
+
+        # Code text box
+        tb = slide.shapes.add_textbox(
+            Inches(0.5), Inches(0.6),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.0),
+            slide.part.package.presentation_part.presentation.slide_height - Inches(1.2)
+        )
+        frame = tb.text_frame
+        frame.clear()
+        frame.word_wrap = True
+
+        lines = text.split('\n')
+        for i, line in enumerate(lines):
+            if i == 0:
+                p = frame.paragraphs[0]
+            else:
+                p = frame.add_paragraph()
+            p.space_after = Pt(0)
+            run = p.add_run()
+            run.text = line if line else ' '
+            run.font.size = Pt(14)
+            run.font.name = 'Consolas'
+            run.font.color.rgb = RGBColor(230, 230, 230)
+
+    def _render_quote(self, slide, block):
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
+        runs = block.get('runs', [])
+        if not runs:
+            return
+        # Left vertical bar
+        bar = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.4), Inches(1.6),
+            Inches(0.08),
+            Inches(1.2)
+        )
+        bar.fill.solid()
+        bar.fill.fore_color.rgb = RGBColor(180, 180, 180)
+        bar.line.fill.background()
+
+        tb = slide.shapes.add_textbox(
+            Inches(0.7), Inches(1.6),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.4),
+            Inches(2.0)
+        )
+        self._add_runs_to_textbox(tb, runs, default_size=18, default_italic=True)
+
+    def _render_table(self, slide, block):
+        """Render a real GFM table using python-pptx add_table."""
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
+        from pptx.enum.text import PP_ALIGN
+        rows = block.get('rows', [])
+        aligns = block.get('aligns', [])
+        if not rows:
+            return
+        n_rows = len(rows) + 1  # +1 for header
+        n_cols = max(len(r) for r in rows) if rows else 0
+        if n_cols == 0:
+            return
+
+        # Position: below the heading area
+        left = Inches(0.6)
+        top = Inches(1.6)
+        width = slide.part.package.presentation_part.presentation.slide_width - Inches(1.2)
+        height = Inches(4.0)
+        table_shape = slide.shapes.add_table(n_rows, n_cols, left, top, width, height)
+        table = table_shape.table
+
+        # Header row: use the first data row as header
+        for j in range(n_cols):
+            cell = table.cell(0, j)
+            cell.text = ''
+            if rows and j < len(rows[0]):
+                cell_runs = rows[0][j]
+            else:
+                cell_runs = [{'text': '', 'bold': False, 'italic': False, 'code': False, 'link': None}]
+            for r in cell_runs:
+                if not r.get('text'):
+                    continue
+                p = cell.text_frame.paragraphs[0] if not cell.text_frame.paragraphs[0].text else cell.text_frame.add_paragraph()
+                run = p.add_run()
+                run.text = r['text']
+                run.font.size = Pt(14)
+                run.font.bold = True
+                run.font.color.rgb = RGBColor(255, 255, 255)
+            # Header background color
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = RGBColor(70, 100, 140)
+
+        # Data rows
+        for i, row in enumerate(rows[1:] if len(rows) > 1 else []):
+            actual_row_idx = i + 1
+            for j in range(n_cols):
+                cell = table.cell(actual_row_idx, j)
+                cell.text = ''
+                if j < len(row):
+                    cell_runs = row[j]
+                else:
+                    cell_runs = [{'text': '', 'bold': False, 'italic': False, 'code': False, 'link': None}]
+                for r in cell_runs:
+                    if not r.get('text'):
+                        continue
+                    p = cell.text_frame.paragraphs[0] if not cell.text_frame.paragraphs[0].text else cell.text_frame.add_paragraph()
+                    run = p.add_run()
+                    run.text = r['text']
+                    run.font.size = Pt(13)
+                    # Apply alignment from `aligns` if available
+                    if j < len(aligns):
+                        from pptx.enum.text import PP_ALIGN
+                        if aligns[j] == 'right':
+                            p.alignment = PP_ALIGN.RIGHT
+                        elif aligns[j] == 'center':
+                            p.alignment = PP_ALIGN.CENTER
+                        else:
+                            p.alignment = PP_ALIGN.LEFT
+                # Alternate row background
+                if i % 2 == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(245, 245, 245)
+
+    def _render_image(self, slide, block, prs):
+        from pptx.util import Inches
+        path = block.get('path', '')
+        if not path:
+            return
+        # Resolve relative to md_dir if available
+        md_dir = getattr(self, '_current_md_dir', None)
+        img_path = Path(path)
+        if not img_path.is_absolute() and md_dir is not None:
+            img_path = md_dir / path
+        if not img_path.exists():
+            self.logger.warning(f"Image not found: {img_path}")
+            return
+        try:
+            # Center the image, fit within slide
+            sw = prs.slide_width
+            sh = prs.slide_height
+            pic = slide.shapes.add_picture(str(img_path), Inches(1), Inches(1), height=Inches(5))
+            # Center horizontally
+            pic.left = int((sw - pic.width) / 2)
+            pic.top = int((sh - pic.height) / 2)
+        except Exception as e:
+            self.logger.warning(f"Failed to add image {img_path}: {e}")
+
+    def _render_hr(self, slide):
+        from pptx.util import Inches
+        from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
+        line = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.6), Inches(3.5),
+            slide.part.package.presentation_part.presentation.slide_width - Inches(1.2),
+            Inches(0.02)
+        )
+        line.fill.solid()
+        line.fill.fore_color.rgb = RGBColor(180, 180, 180)
+        line.line.fill.background()
+
     def _parse_full_mode(self, content: str, title: str) -> List[dict]:
         """完整模式的解析：标题占一页，内容根据情况分页，SVG单独占一页"""
         sections = []
