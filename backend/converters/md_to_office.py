@@ -472,6 +472,21 @@ class MdToOfficeConverter(BaseConverter):
         starts a new slide; code blocks and images get their own slide;
         paragraphs/lists/quotes/tables accumulate on the current slide.
         """
+        def _new_slide(prs):
+            """Create a slide and strip empty layout placeholders."""
+            slide = prs.slides.add_slide(prs.slide_layouts[1])
+            # Remove empty placeholder shapes inherited from the layout
+            # (they show as empty text boxes with borders in PowerPoint)
+            to_remove = []
+            for shape in slide.shapes:
+                if shape.is_placeholder and not shape.text_frame.text.strip():
+                    to_remove.append(shape)
+            for shape in to_remove:
+                try:
+                    slide.shapes._spTree.remove(shape._element)
+                except Exception:
+                    pass
+            return slide
         if not _pptx_available():
             self.logger.error("python-pptx库未安装，无法使用full模式")
             return None
@@ -505,7 +520,7 @@ class MdToOfficeConverter(BaseConverter):
 
             # 封面页
             try:
-                cover_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                cover_slide = _new_slide(prs)
                 self._render_cover(cover_slide, cover_title)
             except Exception as e:
                 self.logger.warning(f"Failed to render cover: {e}")
@@ -522,28 +537,28 @@ class MdToOfficeConverter(BaseConverter):
                 if btype in ('h1', 'h2'):
                     # New slide for H1/H2
                     try:
-                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        current_slide = _new_slide(prs)
                         self._render_block(prs, current_slide, block)
                     except Exception as e:
                         self.logger.warning(f"Failed to render heading: {e}")
                 elif btype == 'code':
                     # Code block: own slide
                     try:
-                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        current_slide = _new_slide(prs)
                         self._render_block(prs, current_slide, block)
                     except Exception as e:
                         self.logger.warning(f"Failed to render code: {e}")
                 elif btype == 'image':
                     # Image: own slide
                     try:
-                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        current_slide = _new_slide(prs)
                         self._render_block(prs, current_slide, block)
                     except Exception as e:
                         self.logger.warning(f"Failed to render image: {e}")
                 else:
                     # Other blocks (p, list, quote, table, h3+, hr): accumulate
                     if current_slide is None:
-                        current_slide = prs.slides.add_slide(prs.slide_layouts[1])
+                        current_slide = _new_slide(prs)
                     try:
                         self._render_block(prs, current_slide, block)
                     except Exception as e:
