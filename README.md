@@ -53,6 +53,24 @@ Convert Markdown ↔ DOCX / PDF / HTML / PPTX, Office → Markdown, diagrams →
 
 ---
 
+## 📸 What it looks like
+
+> Placeholder demos — replace by running `scripts/record-gif.sh media/<name> <duration>` (or use [ScreenToGif](https://www.screentogif.com/) on Windows). See `media/RECORDING.md` for the full workflow.
+
+**Convert Markdown to DOCX with one right-click:**
+
+![Markdown → DOCX demo](media/placeholder-md-to-docx.svg)
+
+**Batch-convert a folder of Markdown files:**
+
+![Batch conversion demo](media/placeholder-batch.svg)
+
+**Markdown → PPTX with proper headings, lists, tables, and code blocks:**
+
+![Markdown → PPTX demo](media/placeholder-pptx.svg)
+
+---
+
 ## 🚀 Quick Start
 
 1. Install the extension from the VS Code Marketplace.

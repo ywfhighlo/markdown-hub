@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <rect width="900" height="600" fill="#f0f0f0"/>
+  <rect x="40" y="40" width="820" height="520" fill="none" stroke="#999" stroke-width="2" stroke-dasharray="10,5"/>
+  <text x="450" y="280" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="32" fill="#666">
+    Placeholder
+  </text>
+  <text x="450" y="320" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="18" fill="#999">
+    Replace with recorded GIF
+  </text>
+  <text x="450" y="345" text-anchor="middle" font-family="-apple-system,Segoe UI,sans-serif" font-size="14" fill="#aaa">
+    scripts/record-gif.sh media/batch 12
+  </text>
+</svg>
