@@ -91,8 +91,8 @@ POPPLER_SPEC = ResourceSpec(
 # Batik: standalone jar (single file)
 BATIK_SPEC = ResourceSpec(
     name="batik",
-    url="https://archive.apache.org/dist/xmlgraphics/batik/batik-1.17/binaries/batik-bin-1.17.zip",
-    version="1.17",
+    url="https://archive.apache.org/dist/xmlgraphics/batik/binaries/batik-bin-1.19.zip",
+    version="1.19",
     archive="zip",
 )
 
