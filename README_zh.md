@@ -59,15 +59,15 @@
 
 **右键 Markdown 即可转换为 DOCX：**
 
-![Markdown → DOCX 演示](media/placeholder-md-to-docx.svg)
+![Markdown → DOCX 演示](media/placeholder-md-to-docx.png)
 
 **批量转换一个目录中的所有 Markdown 文件：**
 
-![批量转换演示](media/placeholder-batch.svg)
+![批量转换演示](media/placeholder-batch.png)
 
 **Markdown → PPTX（带正确的标题、列表、表格、代码块）：**
 
-![Markdown → PPTX 演示](media/placeholder-pptx.svg)
+![Markdown → PPTX 演示](media/placeholder-pptx.png)
 
 ---
 

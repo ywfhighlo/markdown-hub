@@ -59,15 +59,15 @@ Convert Markdown ↔ DOCX / PDF / HTML / PPTX, Office → Markdown, diagrams →
 
 **Convert Markdown to DOCX with one right-click:**
 
-![Markdown → DOCX demo](media/placeholder-md-to-docx.svg)
+![Markdown → DOCX demo](media/placeholder-md-to-docx.png)
 
 **Batch-convert a folder of Markdown files:**
 
-![Batch conversion demo](media/placeholder-batch.svg)
+![Batch conversion demo](media/placeholder-batch.png)
 
 **Markdown → PPTX with proper headings, lists, tables, and code blocks:**
 
-![Markdown → PPTX demo](media/placeholder-pptx.svg)
+![Markdown → PPTX demo](media/placeholder-pptx.png)
 
 ---
 
