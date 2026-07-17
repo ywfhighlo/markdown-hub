@@ -979,7 +979,7 @@ class MdToOfficeConverter(BaseConverter):
         p.alignment = PP_ALIGN.CENTER
         run = p.add_run()
         run.text = title_text
-        run.font.size = Pt(44)
+        run.font.size = Pt(36)
         run.font.bold = True
         run.font.color.rgb = RGBColor(50, 70, 110)
         run.font.name = 'Calibri'
@@ -1017,7 +1017,7 @@ class MdToOfficeConverter(BaseConverter):
         level = block.get('level', 1)
         text = block.get('text', '')
         # H1=32pt, H2=26pt, H3=22pt, etc.
-        size_map = {1: 32, 2: 26, 3: 22, 4: 20, 5: 18, 6: 16}
+        size_map = {1: 36, 2: 28, 3: 22, 4: 20, 5: 18, 6: 16}
         font_size = size_map.get(level, 16)
 
         # Position: top of slide
@@ -1459,7 +1459,7 @@ class MdToOfficeConverter(BaseConverter):
         p = title_frame.paragraphs[0]
         p.text = title_text
         p.alignment = PP_ALIGN.CENTER
-        p.font.size = Pt(44)
+        p.font.size = Pt(36)
         p.font.bold = True
         p.font.name = "微软雅黑"
     
