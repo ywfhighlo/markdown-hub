@@ -54,95 +54,118 @@
     "commands": [
       {
         "command": "markdown-hub.mdToDocx",
-        "title": "Convert to DOCX"
+        "title": "Convert to DOCX",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.mdToPdf",
-        "title": "Convert to PDF"
+        "title": "Convert to PDF",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.mdToHtml",
-        "title": "Convert to HTML"
+        "title": "Convert to HTML",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.mdToPptx",
-        "title": "Convert to PPTX"
+        "title": "Convert to PPTX",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.mdToEpub",
-        "title": "Convert to EPUB"
+        "title": "Convert to EPUB",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.officeToMd",
-        "title": "Convert to Markdown"
+        "title": "Convert to Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.diagramToPng",
-        "title": "Convert to PNG"
+        "title": "Convert to PNG",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.openTemplateSettings",
-        "title": "Template Settings..."
+        "title": "Template Settings...",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchMdToPdf",
-        "title": "Batch: Markdown → PDF"
+        "title": "Batch: Markdown → PDF",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchMdToDocx",
-        "title": "Batch: Markdown → DOCX"
+        "title": "Batch: Markdown → DOCX",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchMdToPptx",
-        "title": "Batch: Markdown → PPTX"
+        "title": "Batch: Markdown → PPTX",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchMdToEpub",
-        "title": "Batch: Markdown → EPUB"
+        "title": "Batch: Markdown → EPUB",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchPdfToMd",
-        "title": "Batch: PDF → Markdown"
+        "title": "Batch: PDF → Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchDocxToMd",
-        "title": "Batch: DOCX → Markdown"
+        "title": "Batch: DOCX → Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchPptxToMd",
-        "title": "Batch: PPTX → Markdown"
+        "title": "Batch: PPTX → Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchExcelToMd",
-        "title": "Batch: Excel → Markdown"
+        "title": "Batch: Excel → Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchAllToMd",
-        "title": "Batch: All Files → Markdown"
+        "title": "Batch: All Files → Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.htmlToMd",
-        "title": "Convert HTML to Markdown"
+        "title": "Convert HTML to Markdown",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchDiagramToPng",
-        "title": "Batch: Diagrams → PNG"
+        "title": "Batch: Diagrams → PNG",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.batchPdfToPng",
-        "title": "Batch: Single-page PDF → PNG"
+        "title": "Batch: Single-page PDF → PNG",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.checkDependencies",
-        "title": "Markdown Hub: Check Dependencies"
+        "title": "Check Dependencies",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.viewHistory",
-        "title": "Markdown Hub: View History"
+        "title": "View History",
+        "category": "Markdown Hub"
       },
       {
         "command": "markdown-hub.clearHistory",
-        "title": "Markdown Hub: Clear History"
+        "title": "Clear History",
+        "category": "Markdown Hub"
       }
     ],
     "menus": {
@@ -175,7 +198,7 @@
         {
           "when": "resourceLangId == markdown",
           "command": "markdown-hub.openTemplateSettings",
-          "group": "2_conversion@6"
+          "group": "9_settings@1"
         },
         {
           "when": "resourceExtname == .docx || resourceExtname == .xlsx || resourceExtname == .ppt || resourceExtname == .pdf",
@@ -220,7 +243,7 @@
         {
           "when": "resourceIsFolder",
           "command": "markdown-hub.openTemplateSettings",
-          "group": "2_conversion@7"
+          "group": "9_settings@1"
         },
         {
           "when": "resourceIsFolder",

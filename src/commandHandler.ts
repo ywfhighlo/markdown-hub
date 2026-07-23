@@ -363,7 +363,22 @@ export async function handleConvertCommand(
                         if (!templatePath || templatePath.trim() === '') {
                             templatePath = path.join(context.extensionPath, 'backend', 'converters', 'templates', 'template.docx');
                         }
-                        conversionOptions.docxTemplatePath = templatePath;
+                        // Validate user-configured template path
+                        if (templatePath && !fs.existsSync(templatePath) &&
+                            !templatePath.includes('templates') // skip built-in default
+                        ) {
+                            vscode.window.showWarningMessage(
+                                `DOCX template file not found: ${templatePath}. Using default styling.`,
+                                'Open Settings'
+                            ).then(sel => {
+                                if (sel === 'Open Settings') {
+                                    vscode.commands.executeCommand('workbench.action.openSettings', 'markdown-hub.docxTemplatePath');
+                                }
+                            });
+                            delete conversionOptions.docxTemplatePath;
+                        } else {
+                            conversionOptions.docxTemplatePath = templatePath;
+                        }
                     }
 
                     conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
@@ -374,7 +389,22 @@ export async function handleConvertCommand(
                         if (!templatePath || templatePath.trim() === '') {
                             templatePath = path.join(context.extensionPath, 'backend', 'converters', 'templates', 'template.pptx');
                         }
-                        conversionOptions.pptxTemplatePath = templatePath;
+                        // Validate user-configured template path
+                        if (templatePath && !fs.existsSync(templatePath) &&
+                            !templatePath.includes('templates')
+                        ) {
+                            vscode.window.showWarningMessage(
+                                `PPTX template file not found: ${templatePath}. Using default styling.`,
+                                'Open Settings'
+                            ).then(sel => {
+                                if (sel === 'Open Settings') {
+                                    vscode.commands.executeCommand('workbench.action.openSettings', 'markdown-hub.pptxTemplatePath');
+                                }
+                            });
+                            delete conversionOptions.pptxTemplatePath;
+                        } else {
+                            conversionOptions.pptxTemplatePath = templatePath;
+                        }
                     }
 
                     conversionOptions.svgDpi = config.get<number>('svgDpi', 300);
@@ -470,9 +500,25 @@ export async function handleConvertCommand(
                         ? `✅ Conversion complete! (${formatDuration(duration)}) — ${outputFileName}`
                         : `✅ Converted ${outputFiles.length} file(s)! (${formatDuration(duration)})`;
 
-                    vscode.window.showInformationMessage(message, 'Reveal in Folder').then(selection => {
+                    // Offer "Open" (preview in editor / browser) + "Reveal in Folder"
+                    const buttons: string[] = ['Open', 'Reveal in Folder'];
+                    vscode.window.showInformationMessage(message, ...buttons).then(selection => {
                         if (selection === 'Reveal in Folder') {
                             vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(outputDir));
+                        } else if (selection === 'Open' && outputFiles.length > 0) {
+                            const firstFile = outputFiles[0];
+                            const ext = path.extname(firstFile).toLowerCase();
+                            const fileUri = vscode.Uri.file(firstFile);
+                            if (ext === '.md' || ext === '.markdown') {
+                                // Open Markdown preview
+                                vscode.commands.executeCommand('markdown.showPreview', fileUri);
+                            } else if (ext === '.html' || ext === '.htm') {
+                                // Open HTML in default browser
+                                vscode.env.openExternal(fileUri);
+                            } else {
+                                // Open in VS Code editor (images, etc.) or system default
+                                vscode.commands.executeCommand('vscode.open', fileUri);
+                            }
                         }
                     });
                 }
