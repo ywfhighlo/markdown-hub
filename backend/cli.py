@@ -91,13 +91,15 @@ def main():
         setup_logging()
 
     # Build the progress reporter
-    def report_progress(stage: str, percentage: int = None):
+    def report_progress(stage: str, percentage: int = None, details: dict = None):
         progress = {
             "type": "progress",
             "stage": stage
         }
         if percentage is not None:
             progress["percentage"] = percentage
+        if details:
+            progress["details"] = details
 
         # Base64-encode so UTF-8 content passes through stdout safely.
         json_str = json.dumps(progress, ensure_ascii=False)

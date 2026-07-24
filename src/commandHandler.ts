@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { executePythonScript } from './pythonService';
-import { checkDependencies, checkDependenciesWithQuickPick, DependencyStatus } from './dependencyChecker';
+import { checkDependencies, checkDependenciesWithQuickPick, precheckConversion, DependencyStatus } from './dependencyChecker';
 
 type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-to-epub' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
 
@@ -327,6 +327,47 @@ export async function handleConvertCommand(
     }
 
     channel.show(true);
+
+    // Pre-check dependencies before launching the Python subprocess.
+    // If deps are missing, offer to install or abort early — much better UX
+    // than letting the subprocess fail with a cryptic error.
+    const depCheck = await precheckConversion(conversionType);
+    if (depCheck) {
+        if (!depCheck.installCommand && depCheck.featureName === 'Python') {
+            // Python itself is missing
+            vscode.window.showErrorMessage(
+                'Python is not installed. Markdown Hub requires Python 3.8+.',
+                'Download Python'
+            ).then(sel => {
+                if (sel === 'Download Python') {
+                    vscode.env.openExternal(vscode.Uri.parse('https://www.python.org/downloads/'));
+                }
+            });
+            return;
+        }
+
+        const msg = `Missing dependencies for ${depCheck.featureName}:\n` +
+            (depCheck.missingLibs.length > 0 ? `  Python libs: ${depCheck.missingLibs.join(', ')}\n` : '') +
+            (depCheck.missingCmds.length > 0 ? `  Tools: ${depCheck.missingCmds.join(', ')}\n` : '');
+        const buttons = depCheck.missingLibs.length > 0 ? ['Install Now', 'Continue Anyway'] : ['Continue Anyway'];
+
+        const selection = await vscode.window.showWarningMessage(msg, ...buttons);
+        if (selection === 'Install Now' && depCheck.installCommand) {
+            // Run pip install in integrated terminal
+            const terminal = vscode.window.createTerminal('Markdown Hub — Installing Dependencies');
+            terminal.show();
+            terminal.sendText(depCheck.installCommand);
+            vscode.window.showInformationMessage(
+                'Dependencies are installing in the terminal. Re-run the conversion after installation completes.'
+            );
+            return;  // Don't proceed — user needs to wait for install
+        }
+        if (selection !== 'Continue Anyway') {
+            return;  // User dismissed — abort
+        }
+        // User chose "Continue Anyway" — proceed (might fail, but their choice)
+        channel.appendLine('⚠️  Proceeding despite missing dependencies — conversion may fail.\n');
+    }
 
     vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,

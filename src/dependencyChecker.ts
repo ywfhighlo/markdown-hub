@@ -88,6 +88,18 @@ const FEATURE_DEFS: Record<string, FeatureDef> = {
     },
 };
 
+// Map VS Code conversion types to feature keys
+const CONVERSION_TO_FEATURE: Record<string, string[]> = {
+    'md-to-docx': ['md_to_docx'],
+    'md-to-pdf':  ['md_to_pdf'],
+    'md-to-html': ['md_to_html'],
+    'md-to-pptx': ['md_to_pptx'],
+    'md-to-epub': ['md_to_pdf'],  // EPUB needs pandoc + markdown like PDF
+    'office-to-md': ['pdf_to_md', 'word_to_md', 'excel_to_md', 'pptx_to_md', 'html_to_md'],
+    'html-to-md': ['html_to_md'],
+    'diagram-to-png': ['diagram_to_png'],
+};
+
 // ─────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────
@@ -310,10 +322,107 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
         } as any);
     }
 
-    await vscode.window.showQuickPick(items, {
+    // Build a lookup from item label → install command for click-to-install
+    const labelToInstall: Record<string, string> = {};
+    for (const issue of issues) {
+        if (issue.installCommand) {
+            labelToInstall[`${issue.name}`] = issue.installCommand;
+        }
+    }
+
+    const selection = await vscode.window.showQuickPick(items, {
         placeHolder: statusMsg,
         canPickMany: false
     });
+
+    // If user selected an issue item with an install command, run it
+    if (selection && selection.label) {
+        // Strip icon prefix (❌ / ⚠️ / ℹ️) to match the lookup key
+        const label = selection.label.replace(/^[❌⚠️ℹ️✅]\s*/, '');
+        const cmd = labelToInstall[label];
+        if (cmd) {
+            // Check if it's a pip command (can auto-run) vs a URL (open in browser)
+            if (cmd.startsWith('pip ') || cmd.startsWith('pip3 ')) {
+                const terminal = vscode.window.createTerminal('Markdown Hub — Installing');
+                terminal.show();
+                terminal.sendText(cmd);
+                vscode.window.showInformationMessage(
+                    `Installing ${label} dependencies in terminal. Re-check after installation completes.`
+                );
+            } else if (cmd.startsWith('http')) {
+                vscode.env.openExternal(vscode.Uri.parse(cmd));
+            } else {
+                // Mixed command (pip + URL) — open terminal for pip part
+                const pipPart = cmd.split('&&').find(p => p.trim().startsWith('pip'));
+                if (pipPart) {
+                    const terminal = vscode.window.createTerminal('Markdown Hub — Installing');
+                    terminal.show();
+                    terminal.sendText(pipPart.trim());
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pre-check dependencies for a specific conversion type.
+ * Returns null if all deps are met, or an object with missing info + install command.
+ * This is called BEFORE launching the Python subprocess so the user gets
+ * an actionable warning instead of a cryptic post-hoc error.
+ */
+export async function precheckConversion(
+    conversionType: string
+): Promise<{ missingLibs: string[]; missingCmds: string[]; installCommand: string; featureName: string } | null> {
+    const featureKeys = CONVERSION_TO_FEATURE[conversionType];
+    if (!featureKeys) {
+        return null;  // Unknown conversion type — skip precheck
+    }
+
+    const status = await checkDependencies();
+    if (!status.python) {
+        return {
+            missingLibs: [],
+            missingCmds: [],
+            installCommand: '',
+            featureName: 'Python',
+        };
+    }
+
+    const allMissingLibs: string[] = [];
+    const allMissingCmds: string[] = [];
+    const featureNames: string[] = [];
+
+    for (const key of featureKeys) {
+        const feat = status.features[key];
+        if (feat && !feat.available) {
+            allMissingLibs.push(...feat.missingLibs);
+            allMissingCmds.push(...feat.missingCmds);
+            featureNames.push(feat.name);
+        }
+    }
+
+    if (allMissingLibs.length === 0 && allMissingCmds.length === 0) {
+        return null;  // All good!
+    }
+
+    // Deduplicate
+    const uniqueLibs = [...new Set(allMissingLibs)];
+    const uniqueCmds = [...new Set(allMissingCmds)];
+
+    const installParts: string[] = [];
+    if (uniqueLibs.length > 0) {
+        installParts.push(pipInstallCmd(uniqueLibs));
+    }
+    if (uniqueCmds.length > 0) {
+        installParts.push(uniqueCmds.map(cmd => installHintFor(cmd)).join('; '));
+    }
+
+    return {
+        missingLibs: uniqueLibs,
+        missingCmds: uniqueCmds,
+        installCommand: installParts.join(' && '),
+        featureName: featureNames.join(' / ') || conversionType,
+    };
 }
 
 export { checkDependencies as default };

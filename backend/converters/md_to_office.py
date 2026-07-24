@@ -248,7 +248,26 @@ class MdToOfficeConverter(BaseConverter):
                 output_files.append(output_file)
         else:
             md_files = self._get_files_by_extension(input_path, ['.md'])
-            for md_file in md_files:
+            total = len(md_files)
+            for idx, md_file in enumerate(md_files):
+                # Emit per-file progress for the frontend progress bar
+                try:
+                    import json as _json, base64 as _b64
+                    pct = int((idx / max(total, 1)) * 100)
+                    msg = _json.dumps({
+                        "type": "progress",
+                        "stage": "converting",
+                        "percentage": pct,
+                        "details": {
+                            "currentFile": idx + 1,
+                            "totalFiles": total,
+                            "currentFileName": os.path.basename(md_file),
+                        }
+                    }, ensure_ascii=False)
+                    print(_b64.b64encode(msg.encode('utf-8')).decode('ascii'), flush=True)
+                except Exception:
+                    pass
+
                 output_file = self._convert_single_file(md_file)
                 if output_file:
                     output_files.append(output_file)

@@ -200,7 +200,26 @@ class OfficeToMdConverter(BaseConverter):
             if not office_files:
                 raise ValueError(f"目录中未找到支持的Office文件: {input_path}")
 
-            for office_file in office_files:
+            total = len(office_files)
+            for idx, office_file in enumerate(office_files):
+                # Emit per-file progress for the frontend progress bar
+                try:
+                    import json as _json, base64 as _b64
+                    pct = int((idx / max(total, 1)) * 100)
+                    msg = _json.dumps({
+                        "type": "progress",
+                        "stage": "converting",
+                        "percentage": pct,
+                        "details": {
+                            "currentFile": idx + 1,
+                            "totalFiles": total,
+                            "currentFileName": os.path.basename(office_file),
+                        }
+                    }, ensure_ascii=False)
+                    print(_b64.b64encode(msg.encode('utf-8')).decode('ascii'), flush=True)
+                except Exception:
+                    pass
+
                 reason_before = self._last_skip_reason
                 result = self._convert_single_file(office_file)
                 if result:
