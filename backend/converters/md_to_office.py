@@ -698,6 +698,10 @@ class MdToOfficeConverter(BaseConverter):
         """
         blocks: List[dict] = []
 
+        # Pre-process GFM syntax that python-markdown doesn't natively handle:
+        # ~~strikethrough~~ → <del>strikethrough</del> (HTML tag passes through)
+        content = re.sub(r'~~([^~]+)~~', r'<del>\1</del>', content)
+
         # Convert to HTML via python-markdown (already in requirements)
         import markdown as _md_lib
         try:
@@ -762,6 +766,18 @@ class MdToOfficeConverter(BaseConverter):
             if not children_runs and node.text:
                 children_runs = [{'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
             runs.extend(self._annotate_runs(children_runs, code=True))
+            if node.tail:
+                runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
+        elif node.tag == 'del' or node.tag == 's':
+            # Strikethrough (pre-processed from ~~text~~ GFM syntax)
+            children_runs = []
+            for child in node:
+                children_runs.extend(self._walk_html(child))
+            if not children_runs and node.text:
+                children_runs = [{'text': node.text, 'bold': False, 'italic': False, 'code': False, 'link': None}]
+            for r in children_runs:
+                r['strike'] = True
+            runs.extend(children_runs)
             if node.tail:
                 runs.append({'text': node.tail, 'bold': False, 'italic': False, 'code': False, 'link': None})
         elif node.tag == 'a':
@@ -954,6 +970,7 @@ class MdToOfficeConverter(BaseConverter):
         formatting (bold/italic/code) is applied per-run.
         """
         from pptx.util import Pt
+        from pptx.dml.color import RGBColor
         frame = textbox.text_frame
         frame.clear()
         frame.word_wrap = True
@@ -976,6 +993,7 @@ class MdToOfficeConverter(BaseConverter):
                         'italic': run.get('italic', False),
                         'code': run.get('code', False),
                         'link': run.get('link', None),
+                        'strike': run.get('strike', False),
                     })
 
         for i, para_runs in enumerate(paragraphs):
@@ -989,6 +1007,13 @@ class MdToOfficeConverter(BaseConverter):
                 run.font.size = Pt(default_size)
                 run.font.bold = default_bold or r['bold']
                 run.font.italic = default_italic or r['italic']
+                if r.get('strike'):
+                    run.font.underline = False
+                    # python-pptx doesn't have a direct strike API;
+                    # use italic + gray color as a visual approximation
+                    run.font.italic = True
+                    if default_color is None:
+                        run.font.color.rgb = RGBColor(150, 150, 150)
                 if r['code']:
                     run.font.name = 'Consolas'
                 else:

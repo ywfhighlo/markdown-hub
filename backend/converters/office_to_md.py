@@ -1586,16 +1586,44 @@ class OfficeToMdConverter(BaseConverter):
 
         - '* item'   → '- item' (project standard)
         - '_italic_' → '*italic*' (GFM standard)
-        - '  ' (2-space top-level indent from html2text unicode_snob) → ''
+        - '  ' (2-space top-level indent) → ''
+        - Table rows: 'A| B\n---|---' → '| A | B |\n| --- | --- |'
         """
         lines = md.split('\n')
         out = []
+        in_table = False
         for line in lines:
-            # Strip html2text's 2-space top-level list indent (e.g. "  - item" → "- item")
+            stripped = line.strip()
+            # Detect table rows: contains | but doesn't start with |
+            # (html2text outputs "A | B | C" without leading/trailing pipes)
+            # Heuristic: line has 2+ unescaped | and looks like a data/separator row
+            pipe_count = stripped.count('|') - stripped.count('\\|')
+            is_table_row = pipe_count >= 1 and not stripped.startswith('![')
+
+            # Detect separator row: all dashes and pipes
+            is_separator = bool(re.match(r'^[-:\s|+]+$', stripped)) and '-' in stripped
+
+            if is_table_row or is_separator or (in_table and stripped == ''):
+                if is_table_row or is_separator:
+                    in_table = True
+                    # Normalize: ensure leading/trailing pipes, spaces around |
+                    cells = stripped.split('|')
+                    cells = [c.strip() for c in cells]
+                    # Filter empty leading/trailing from existing pipes
+                    if cells and cells[0] == '':
+                        cells = cells[1:]
+                    if cells and cells[-1] == '':
+                        cells = cells[:-1]
+                    if cells:
+                        line = '| ' + ' | '.join(cells) + ' |'
+                elif in_table and stripped == '':
+                    in_table = False
+            else:
+                in_table = False
+
+            # Strip html2text's 2-space top-level list indent
             stripped_leading = line.lstrip(' ')
             leading_spaces = len(line) - len(stripped_leading)
-            # If a 2-space indent is at the very top level (no further nesting),
-            # remove it. Deeper nesting kept as-is.
             if leading_spaces == 2 and stripped_leading.startswith(('- ', '* ', '1. ', '1) ')):
                 line = stripped_leading
             # Bullet list marker: '*' → '-'
