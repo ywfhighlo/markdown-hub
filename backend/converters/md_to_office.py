@@ -1148,13 +1148,15 @@ class MdToOfficeConverter(BaseConverter):
             from lxml import etree
             nsmap_a = 'http://schemas.openxmlformats.org/drawingml/2006/main'
             if style == 'ol':
-                # Numbered list
+                # Numbered list: 1. 2. 3. (PowerPoint will auto-number)
                 bu = etree.SubElement(pPr, f'{{{nsmap_a}}}buAutoNum')
                 bu.set('type', 'arabicPeriod')
             else:
-                # Bulleted list (•)
+                # Bulleted list: vary the symbol by nesting level for visual depth
+                # level 0: solid disc •, level 1: hollow circle ○, level 2: square ▪, level 3: dash –
+                bullet_chars = ['\u2022', '\u25e6', '\u25aa', '\u2013']
                 bu = etree.SubElement(pPr, f'{{{nsmap_a}}}buChar')
-                bu.set('char', '•')
+                bu.set('char', bullet_chars[min(level, len(bullet_chars) - 1)])
             # Apply runs
             for r in item.get('runs', []):
                 run = p.add_run()
@@ -1291,11 +1293,15 @@ class MdToOfficeConverter(BaseConverter):
                 run.font.size = Pt(14)
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(255, 255, 255)
+                if r.get('code'):
+                    run.font.name = 'Consolas'
+                if r.get('italic'):
+                    run.font.italic = True
             # Header background color
             cell.fill.solid()
             cell.fill.fore_color.rgb = RGBColor(70, 100, 140)
 
-        # Data rows
+        # Data rows: full inline formatting support (bold/italic/code/strike)
         for i, row in enumerate(rows[1:] if len(rows) > 1 else []):
             actual_row_idx = i + 1
             for j in range(n_cols):
@@ -1309,18 +1315,28 @@ class MdToOfficeConverter(BaseConverter):
                     if not r.get('text'):
                         continue
                     p = cell.text_frame.paragraphs[0] if not cell.text_frame.paragraphs[0].text else cell.text_frame.add_paragraph()
-                    run = p.add_run()
-                    run.text = r['text']
-                    run.font.size = Pt(13)
-                    # Apply alignment from `aligns` if available
+                    # Apply column alignment
                     if j < len(aligns):
-                        from pptx.enum.text import PP_ALIGN
                         if aligns[j] == 'right':
                             p.alignment = PP_ALIGN.RIGHT
                         elif aligns[j] == 'center':
                             p.alignment = PP_ALIGN.CENTER
                         else:
                             p.alignment = PP_ALIGN.LEFT
+                    run = p.add_run()
+                    run.text = r['text']
+                    run.font.size = Pt(13)
+                    run.font.bold = r.get('bold', False)
+                    run.font.italic = r.get('italic', False)
+                    if r.get('code'):
+                        run.font.name = 'Consolas'
+                    else:
+                        run.font.name = 'Calibri'
+                    if r.get('strike'):
+                        # python-pptx lacks a strike API; use gray + italic
+                        run.font.color.rgb = RGBColor(150, 150, 150)
+                    if r.get('link'):
+                        run.hyperlink.address = r['link']
                 # Alternate row background
                 if i % 2 == 0:
                     cell.fill.solid()
@@ -2668,7 +2684,16 @@ class MdToOfficeConverter(BaseConverter):
                 #     cmd.append('--shift-heading-level-by=-1')
                 
                 subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
-                
+
+                # Inject visible table borders (single 1pt black on all sides + inner)
+                # for tables in the generated DOCX. Previously this only ran
+                # in the PDF pipeline — making it part of DOCX output too,
+                # so tables look right in Word without needing a custom template.
+                try:
+                    self._inject_table_borders(str(output_file_path))
+                except Exception as e:
+                    self.logger.warning(f"注入表格边框失败 (DOCX): {e}")
+
                 self.logger.info(f"成功转换 {input_file} to {output_file_path}")
                 return str(output_file_path)
 
@@ -3001,7 +3026,14 @@ class MdToOfficeConverter(BaseConverter):
         return '\n'.join(toc_lines)
 
     def _get_html_theme_css(self, theme_name: str) -> str:
-        """Returns CSS for the HTML output."""
+        """Returns CSS for the HTML output.
+
+        Layout (sidebar TOC + content) is defined inline here. Detailed
+        typography (headings, tables, code, lists, blockquote, print) is
+        loaded from templates/html_theme.css so it can be iterated on
+        without touching Python code.
+        """
+        # Layout: sidebar TOC + content
         github_floating_toc = """
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fff; margin: 0; padding: 0; }
         .container { max-width: 1200px; margin: 20px auto; display: flex; flex-direction: row; align-items: flex-start; }
@@ -3010,17 +3042,25 @@ class MdToOfficeConverter(BaseConverter):
         .toc ul { list-style: none; padding-left: 0; } .toc li a { color: #0366d6; text-decoration: none; display: block; padding: 4px 0; font-size: 14px; }
         .toc li a:hover { text-decoration: underline; }
         .toc-level-1 { padding-left: 5px; font-weight: 600; } .toc-level-2 { padding-left: 20px; } .toc-level-3 { padding-left: 35px; } .toc-level-4 { padding-left: 50px; }
-        h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin-top: 24px; margin-bottom: 16px; border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
-        h1 { font-size: 2em; } h2 { font-size: 1.5em; } h3 { font-size: 1.25em; }
-        p { margin-top: 0; margin-bottom: 16px; } a { color: #0366d6; text-decoration: none; } a:hover { text-decoration: underline; }
-        code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 13px; }
-        pre { word-wrap: normal; padding: 16px; overflow: auto; line-height: 1.45; background-color: #f6f8fa; border-radius: 3px; }
-        code { background-color: rgba(27,31,35,.05); padding: .2em .4em; margin: 0; border-radius: 3px; }
-        pre > code { padding: 0; margin: 0; background-color: transparent; border: 0; }
-        table { border-collapse: collapse; } th, td { border: 1px solid #ddd; padding: 8px; } th { background-color: #f2f2f2; }
-        img { max-width: 100%; } blockquote { color: #6a737d; border-left: .25em solid #dfe2e5; padding: 0 1em; margin-left: 0; }
         """
-        return github_floating_toc
+
+        # Detailed theme (GitHub-like): load from templates/html_theme.css
+        theme_css_path = Path(__file__).parent / 'templates' / 'html_theme.css'
+        try:
+            theme_css = theme_css_path.read_text(encoding='utf-8')
+        except OSError:
+            # Fallback to minimal embedded styles
+            theme_css = (
+                "h1, h2, h3 { font-weight: 600; line-height: 1.25; }"
+                "table { border-collapse: collapse; }"
+                "th, td { border: 1px solid #ddd; padding: 8px; }"
+                "th { background-color: #f2f2f2; }"
+                "code { background-color: #f6f8fa; padding: 2px 4px; border-radius: 3px; }"
+                "pre { padding: 16px; background-color: #f6f8fa; border-radius: 3px; overflow: auto; }"
+                "blockquote { color: #6a737d; border-left: 4px solid #dfe2e5; padding: 0 1em; }"
+            )
+
+        return github_floating_toc + "\n" + theme_css
 
     def _remove_title_numbers(self, input_file: str) -> str:
         """
@@ -3341,28 +3381,27 @@ class MdToOfficeConverter(BaseConverter):
     
     def _normalize_unordered_lists(self, content: str) -> str:
         """
-        将非标准的无序列表格式转换为标准的Markdown格式。
+        将非标准的无序列表格式转换为标准的无序列表格式。
         支持的转换：
-        1. 非标准符号：• ◦ ▪ ▫ ‣ → -
-        2. 数字编号列表：1. 2. 3. → - （转换为无序列表）
-        3. 表格中的HTML列表：<br>• → <br>-
-        
-        转换规则：
-        1. 识别各种列表格式
-        2. 保持原有的缩进层级
-        3. 统一转换为标准的 - 符号
-        4. 确保列表项前后有适当的空行
+        1. 非标准符号：• ◦ ▪ ▫ ‣ → -  (用于"直接写 • 字符"或 Word 粘贴过来的)
+        2. 表格中的HTML列表：<br>• → <br>-  (真实场景)
+
+        注意：数字列表 1. 2. 3. **不再被强转为 -**。
+        pandoc 原生支持有序列表，强行转 bullet 会破坏语义。
+        编号由 pandoc 按 AST 自动连续，不需要我们手动指定。
         """
         try:
             lines = content.split('\n')
             processed_lines = []
-            
-            # 定义各种列表格式的正则表达式
+
             # 1. 非标准符号列表：可选空白 + 非标准符号 + 空格 + 内容
             non_standard_list_pattern = re.compile(r'^(\s*)[•◦▪▫‣]\s+(.+)$')
-            
-            # 2. 数字编号列表：可选空白 + 数字 + 点 + 空格 + 内容
-            numbered_list_pattern = re.compile(r'^(\s*)(\d+)\.\s+(.+)$')
+
+            # 4. 表格中的HTML列表（处理表格内的非标准符号）
+            def process_table_lists(line):
+                # 匹配表格行中的 <br>• 格式
+                table_list_pattern = re.compile(r'(<br>\s*)[•◦▪▫‣](\s+)')
+                return table_list_pattern.sub(r'\1-\2', line)
             
             # 3. 标准列表标记
             standard_list_markers = ('- ', '* ', '+ ')
@@ -3386,70 +3425,43 @@ class MdToOfficeConverter(BaseConverter):
                 
                 # 检查是否为非标准符号列表项
                 non_standard_match = non_standard_list_pattern.match(line)
-                numbered_match = numbered_list_pattern.match(line)
-                
+
                 if non_standard_match:
                     indent = non_standard_match.group(1)  # 保持原有缩进
                     content_text = non_standard_match.group(2)  # 列表项内容
-                    
+
                     # 转换为标准格式
                     standard_line = f"{indent}- {content_text}"
-                    
+
                     # 检查是否需要在列表前添加空行
                     if i > 0:
                         prev_line = lines[i-1]
                         prev_stripped = prev_line.strip()
-                        
+
                         # 如果前一行不是空行且不是列表项，添加空行
-                        if (prev_stripped and 
+                        if (prev_stripped and
                             not any(prev_line.lstrip().startswith(marker) for marker in standard_list_markers) and
-                            not non_standard_list_pattern.match(prev_line) and
-                            not numbered_list_pattern.match(prev_line)):
+                            not non_standard_list_pattern.match(prev_line)):
                             processed_lines.append("")
-                    
+
                     processed_lines.append(standard_line)
                     self.logger.debug(f"转换非标准列表项: '{original_line.strip()}' -> '{standard_line.strip()}'")
-                    
-                elif numbered_match:
-                    indent = numbered_match.group(1)  # 保持原有缩进
-                    number = numbered_match.group(2)  # 原始数字（用于日志）
-                    content_text = numbered_match.group(3)  # 列表项内容
-                    
-                    # 转换为标准无序列表格式
-                    standard_line = f"{indent}- {content_text}"
-                    
-                    # 检查是否需要在列表前添加空行
-                    if i > 0:
-                        prev_line = lines[i-1]
-                        prev_stripped = prev_line.strip()
-                        
-                        # 如果前一行不是空行且不是列表项，添加空行
-                        if (prev_stripped and 
-                            not any(prev_line.lstrip().startswith(marker) for marker in standard_list_markers) and
-                            not non_standard_list_pattern.match(prev_line) and
-                            not numbered_list_pattern.match(prev_line)):
-                            processed_lines.append("")
-                    
-                    processed_lines.append(standard_line)
-                    self.logger.debug(f"转换数字列表项: '{original_line.strip()}' -> '{standard_line.strip()}'")
-                    
+
                 else:
                     # 不是列表项，直接添加（可能已经处理了表格中的HTML列表）
                     processed_lines.append(line)
                     if line != original_line:
                         self.logger.debug(f"转换表格列表: '{original_line.strip()}' -> '{line.strip()}'")
-            
+
             result = '\n'.join(processed_lines)
-            
+
             # 统计转换的数量
             non_standard_count = len(non_standard_list_pattern.findall(content))
-            numbered_count = len(numbered_list_pattern.findall(content))
             table_list_count = len(re.findall(r'<br>\s*[•◦▪▫‣]\s+', content))
-            
-            total_converted = non_standard_count + numbered_count + table_list_count
-            if total_converted > 0:
-                self.logger.info(f"列表格式转换完成: 非标准符号 {non_standard_count} 个, 数字列表 {numbered_count} 个, 表格列表 {table_list_count} 个")
-            
+
+            if non_standard_count > 0 or table_list_count > 0:
+                self.logger.info(f"列表格式转换完成: 非标准符号 {non_standard_count} 个, 表格列表 {table_list_count} 个")
+
             return result
             
         except Exception as e:
