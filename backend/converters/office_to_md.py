@@ -1375,6 +1375,28 @@ class OfficeToMdConverter(BaseConverter):
             inline = self._runs_to_inline_md(para.runs)
             return inline if inline else text
 
+        def cell_to_md(cell):
+            """Extract a Word table cell to markdown with inline formatting.
+            Walks paragraphs and runs to emit **bold**, *italic*, and `code`
+            markers instead of plain text.
+            """
+            parts = []
+            for p in cell.paragraphs:
+                if parts:
+                    parts.append('<br>')
+                for r in p.runs:
+                    text = r.text.replace('|', '\\|')
+                    if not text:
+                        continue
+                    if r.bold:
+                        text = f'**{text}**'
+                    if r.italic:
+                        text = f'*{text}*'
+                    if r.font.name and ('Mono' in r.font.name or 'Courier' in r.font.name or 'Consolas' in r.font.name):
+                        text = f'`{text}`'
+                    parts.append(text)
+            return ''.join(parts).strip()
+
         def table_to_md(table):
             """Convert a Word table to a GFM pipe table.
 
@@ -1391,7 +1413,7 @@ class OfficeToMdConverter(BaseConverter):
                 for cell in row.cells:
                     # Dedupe merged cells by their underlying <w:tc> element id
                     tc_id = id(cell._tc)
-                    cell_text = cell.text.strip().replace('\n', '<br>').replace('|', '\\|')
+                    cell_text = cell_to_md(cell)
                     if tc_id in seen_tc_ids:
                         # This is a continuation of a merged cell — emit empty
                         cells.append('')
@@ -1547,9 +1569,47 @@ class OfficeToMdConverter(BaseConverter):
             md_text = ""
 
             for i, slide in enumerate(prs.slides):
-                md_text += f"## 幻灯片 {i+1}\n\n"
+                md_text += f"## Slide {i+1}\n\n"
 
                 for shape in slide.shapes:
+                    if shape.has_table:
+                        # Render table as GFM pipe table
+                        table = shape.table
+                        rows_data = []
+                        for row in table.rows:
+                            cells = []
+                            for cell in row.cells:
+                                text = cell.text.strip().replace('\n', '<br>').replace('|', '\\|')
+                                cells.append(text)
+                            rows_data.append(cells)
+                        if rows_data:
+                            out = []
+                            out.append('| ' + ' | '.join(rows_data[0]) + ' |')
+                            out.append('| ' + ' | '.join(['---'] * len(rows_data[0])) + ' |')
+                            for r in rows_data[1:]:
+                                out.append('| ' + ' | '.join(r) + ' |')
+                            md_text += '\n'.join(out) + '\n\n'
+                        continue
+
+                    if hasattr(shape, "text_frame") and shape.text_frame:
+                        # Detect lists by examining paragraph levels
+                        tf = shape.text_frame
+                        paras = list(tf.paragraphs)
+                        has_list = any(p.level > 0 for p in paras)
+                        if has_list:
+                            for p in paras:
+                                text = p.text.strip()
+                                if not text:
+                                    continue
+                                indent = "  " * p.level
+                                md_text += f"{indent}- {text}\n"
+                            md_text += "\n"
+                        else:
+                            # Regular paragraph text
+                            md_text += f"{shape.text}\n\n"
+                        continue
+
+                    # Fallback: any shape with text
                     if hasattr(shape, "text") and shape.text:
                         md_text += f"{shape.text}\n\n"
 

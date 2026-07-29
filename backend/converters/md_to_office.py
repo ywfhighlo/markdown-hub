@@ -1276,6 +1276,25 @@ class MdToOfficeConverter(BaseConverter):
         table_shape = slide.shapes.add_table(n_rows, n_cols, left, top, width, height)
         table = table_shape.table
 
+        # Allocate column widths proportional to content size (CJK-aware).
+        # Without this, python-pptx equal-splits every column, making a
+        # 2-char "Yes/No" column as wide as a 40-char description column.
+        if rows and n_cols > 0:
+            col_widths = [0] * n_cols
+            for row in rows:
+                for j, cell_runs in enumerate(row):
+                    if j >= n_cols:
+                        continue
+                    # Sum display widths (CJK chars count as 2)
+                    text = ''.join(r.get('text', '') for r in cell_runs)
+                    display = sum(2 if ord(c) > 0x2E80 else 1 for c in text)
+                    col_widths[j] = max(col_widths[j], display)
+            total = sum(col_widths) or 1
+            min_w = 600  # ~0.083 inches in EMU
+            for j in range(n_cols):
+                cell_width = max(min_w, int(width * col_widths[j] / total))
+                table.columns[j].width = cell_width
+
         # Header row: use the first data row as header
         for j in range(n_cols):
             cell = table.cell(0, j)
@@ -2373,16 +2392,12 @@ class MdToOfficeConverter(BaseConverter):
         # 5. 处理缩写词
         content = self._process_abbreviations(content)
 
-        # 6. 处理删除线
-        content = self._process_strikethrough(content)
-
-        # 7. 处理上下标
-        content = self._process_superscript_subscript(content)
-
-        # 8. 处理键盘按键
-        content = self._process_keyboard_keys(content)
-
-        # 9. 处理水平线（增强版）
+        # 6. 处理水平线（增强版）
+        # Note: ~~strikethrough~~, ^sup^, ~sub~, <kbd>x</kbd> are natively
+        # supported by pandoc — no preprocessing required. Earlier
+        # _process_strikethrough / _process_superscript_subscript /
+        # _process_keyboard_keys rewrote them as literal text
+        # ('[删除线: x]', '^x^', '[x]') which was actively wrong.
         content = self._process_horizontal_rules(content)
 
         return content
@@ -2954,7 +2969,11 @@ class MdToOfficeConverter(BaseConverter):
             cmd.append('--mathjax')
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
-            
+
+            # Strip empty <style></style> blocks that pandoc may emit
+            # when the highlight theme produces no CSS rules
+            html_body = re.sub(r'<style>\s*</style>', '', html_body)
+
             heading_counts = {}
             def add_anchor_to_heading(match):
                 level, title = len(match.group(1)), match.group(2).strip()
@@ -3076,9 +3095,6 @@ class MdToOfficeConverter(BaseConverter):
             pattern_title_numbers = r'^(#+)\s+(\d+(\.\d+)*)\s+(.+)$'
             processed_content = re.sub(pattern_title_numbers, r'\1 \4', original_content, flags=re.MULTILINE)
             
-            # 2. 删除图片标题
-            processed_content = self._remove_image_captions(processed_content)
-
             # 3. 确保列表前有空行以便Pandoc正确识别
             lines = processed_content.splitlines()
             new_processed_lines = []
@@ -3121,10 +3137,6 @@ class MdToOfficeConverter(BaseConverter):
             self.logger.error(f"处理Markdown预处理时出错 (file: {input_file}): {str(e)}")
             return input_file
     
-    def _remove_image_captions(self, content: str) -> str:
-        """删除图片标题（占位符实现）"""
-        # 这里可以添加具体的图片标题删除逻辑
-        return content
     
     def _copy_template_and_append_content(self, template_path: str, content_path: str, title: str, original_input_file: str) -> str:
         """
@@ -3294,90 +3306,7 @@ class MdToOfficeConverter(BaseConverter):
         
         return processed_content, temp_files
     
-    def _post_process_html(self, html_file: str, processed_md_file: str):
-        """后处理HTML文件，添加样式和目录"""
-        try:
-            # 读取生成的HTML文件
-            with open(html_file, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            
-            # 获取GitHub主题CSS
-            theme_css = self._get_github_theme_css()
-            
-            # 添加锚点ID到标题
-            import re
-            def add_anchor_to_heading(match):
-                level = len(match.group(1))
-                title = match.group(2)
-                anchor_id = re.sub(r'[^\w\s-]', '', title).strip()
-                anchor_id = re.sub(r'[\s_-]+', '-', anchor_id).lower()
-                return f'<h{level} id="{anchor_id}">{title}</h{level}>'
-            
-            html_content = re.sub(r'<h([1-6])>(.*?)</h[1-6]>', add_anchor_to_heading, html_content)
-            
-            # 插入CSS样式
-            css_insert = f'<style>\n{theme_css}\n</style>'
-            if '</head>' in html_content:
-                html_content = html_content.replace('</head>', f'{css_insert}\n</head>')
-            else:
-                html_content = f'<head>\n{css_insert}\n</head>\n{html_content}'
-            
-            # 写回HTML文件
-            with open(html_file, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-                
-        except Exception as e:
-            self.logger.warning(f"HTML后处理失败: {e}")
     
-    def _get_github_theme_css(self) -> str:
-        """获取GitHub主题的CSS样式"""
-        return """
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #24292e;
-            max-width: 980px;
-            margin: 0 auto;
-            padding: 45px;
-            background-color: #ffffff;
-        }
-        h1, h2, h3, h4, h5, h6 {
-            margin-top: 24px;
-            margin-bottom: 16px;
-            font-weight: 600;
-            line-height: 1.25;
-        }
-        h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 10px; }
-        h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 8px; }
-        h3 { font-size: 1.25em; }
-        h4 { font-size: 1em; }
-        h5 { font-size: 0.875em; }
-        h6 { font-size: 0.85em; color: #6a737d; }
-        p { margin-top: 0; margin-bottom: 16px; }
-        blockquote {
-            padding: 0 1em;
-            color: #6a737d;
-            border-left: 0.25em solid #dfe2e5;
-            margin: 0 0 16px 0;
-        }
-        ul, ol { padding-left: 2em; margin-top: 0; margin-bottom: 16px; }
-        li { word-wrap: break-all; }
-        code {
-            padding: 0.2em 0.4em;
-            margin: 0;
-            font-size: 85%;
-            background-color: rgba(27,31,35,0.05);
-            border-radius: 3px;
-        }
-        pre {
-            padding: 16px;
-            overflow: auto;
-            font-size: 85%;
-            line-height: 1.45;
-            background-color: #f6f8fa;
-            border-radius: 3px;
-        }
-        """
     
     def _normalize_unordered_lists(self, content: str) -> str:
         """
@@ -3702,48 +3631,8 @@ class MdToOfficeConverter(BaseConverter):
             self.logger.warning(f"表格列宽优化失败: {e}")
             return content
 
-    def _process_strikethrough(self, content: str) -> str:
-        """处理删除线语法：~~text~~"""
 
-        # 处理删除线 ~~text~~
-        def replace_strikethrough(match):
-            text = match.group(1)
-            return f"[删除线: {text}]"
 
-        content = re.sub(r'~~(.+?)~~', replace_strikethrough, content)
-
-        return content
-
-    def _process_superscript_subscript(self, content: str) -> str:
-        """处理上下标语法：^上标^ 和 ~下标~"""
-
-        # 处理上标 ^text^
-        def replace_superscript(match):
-            text = match.group(1)
-            return f"^{text}^"
-
-        content = re.sub(r'\^([^^]+)\^', replace_superscript, content)
-
-        # 处理下标 ~text~
-        def replace_subscript(match):
-            text = match.group(1)
-            return f"~{text}~"
-
-        content = re.sub(r'~([^~]+)~', replace_subscript, content)
-
-        return content
-
-    def _process_keyboard_keys(self, content: str) -> str:
-        """处理键盘按键语法：<kbd>key</kbd>"""
-
-        # 处理 <kbd>key</kbd> 标签
-        def replace_keyboard_key(match):
-            key = match.group(1).strip()
-            return f"[{key}]"
-
-        content = re.sub(r'<kbd>([^<]+)</kbd>', replace_keyboard_key, content)
-
-        return content
 
     def _process_horizontal_rules(self, content: str) -> str:
         """
