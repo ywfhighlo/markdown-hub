@@ -469,7 +469,7 @@
     "@typescript-eslint/eslint-plugin": "^5.59.0",
     "@typescript-eslint/parser": "^5.59.0",
     "eslint": "^8.40.0",
-    "sharp": "^0.34.3",
+    "sharp": "^0.35.4",
     "typescript": "^5.0.0"
   }
 }
