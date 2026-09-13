@@ -2854,13 +2854,16 @@ class MdToOfficeConverter(BaseConverter):
                                 )
                             except Exception as e:
                                 self.logger.warning(f"解析 document.xml 失败，跳过边框注入: {e}")
-                        # Strip filesystem timestamps for reproducible output.
-                        # All other fields (compress_type, etc.) are preserved.
-                        clean_item = zipfile.ZipInfo(item.filename)
-                        clean_item.compress_type = item.compress_type
-                        clean_item.comment = item.comment
-                        clean_item.external_attr = item.external_attr
-                        zout.writestr(clean_item, data)
+                        if self.reproducible:
+                            # Strip filesystem timestamps for reproducible output.
+                            # Fresh ZipInfo has date_time=(1980,1,1,0,0,0) — deterministic.
+                            clean_item = zipfile.ZipInfo(item.filename)
+                            clean_item.compress_type = item.compress_type
+                            clean_item.comment = item.comment
+                            clean_item.external_attr = item.external_attr
+                            zout.writestr(clean_item, data)
+                        else:
+                            zout.writestr(item, data)
             if touched:
                 shutil.move(tmp_path, docx_path)
                 self.logger.info(f"为 {touched} 个表格注入了边框")
@@ -2943,12 +2946,14 @@ class MdToOfficeConverter(BaseConverter):
                         data = zin.read(item.filename)
                         if item.filename == 'word/styles.xml':
                             data = styles_xml.encode('utf-8')
-                        # Strip filesystem timestamps for reproducible output.
-                        clean_item = zipfile.ZipInfo(item.filename)
-                        clean_item.compress_type = item.compress_type
-                        clean_item.comment = item.comment
-                        clean_item.external_attr = item.external_attr
-                        zout.writestr(clean_item, data)
+                        if self.reproducible:
+                            clean_item = zipfile.ZipInfo(item.filename)
+                            clean_item.compress_type = item.compress_type
+                            clean_item.comment = item.comment
+                            clean_item.external_attr = item.external_attr
+                            zout.writestr(clean_item, data)
+                        else:
+                            zout.writestr(item, data)
 
             shutil.move(tmp_path, docx_path)
             self.logger.info(f"注入了 {len(missing)} 个缺失的段落样式: {missing}")
