@@ -180,6 +180,10 @@ class MdToOfficeConverter(BaseConverter):
 
         # PPTX SVG 转换模式配置 - 使用默认值
         self.pptx_svg_mode = 'full'
+
+        # B5: reproducible output — strips filesystem timestamps from DOCX ZIP entries
+        # so repeated conversions of the same input are byte-for-byte identical.
+        self.reproducible = kwargs.get('reproducible', False)
         
         # 模板路径处理：优先使用前端提供的路径，如果无效则回退到默认模板
         self.template_path = None
@@ -2850,7 +2854,13 @@ class MdToOfficeConverter(BaseConverter):
                                 )
                             except Exception as e:
                                 self.logger.warning(f"解析 document.xml 失败，跳过边框注入: {e}")
-                        zout.writestr(item, data)
+                        # Strip filesystem timestamps for reproducible output.
+                        # All other fields (compress_type, etc.) are preserved.
+                        clean_item = zipfile.ZipInfo(item.filename)
+                        clean_item.compress_type = item.compress_type
+                        clean_item.comment = item.comment
+                        clean_item.external_attr = item.external_attr
+                        zout.writestr(clean_item, data)
             if touched:
                 shutil.move(tmp_path, docx_path)
                 self.logger.info(f"为 {touched} 个表格注入了边框")
@@ -2933,7 +2943,12 @@ class MdToOfficeConverter(BaseConverter):
                         data = zin.read(item.filename)
                         if item.filename == 'word/styles.xml':
                             data = styles_xml.encode('utf-8')
-                        zout.writestr(item, data)
+                        # Strip filesystem timestamps for reproducible output.
+                        clean_item = zipfile.ZipInfo(item.filename)
+                        clean_item.compress_type = item.compress_type
+                        clean_item.comment = item.comment
+                        clean_item.external_attr = item.external_attr
+                        zout.writestr(clean_item, data)
 
             shutil.move(tmp_path, docx_path)
             self.logger.info(f"注入了 {len(missing)} 个缺失的段落样式: {missing}")
