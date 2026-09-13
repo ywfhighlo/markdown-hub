@@ -837,14 +837,18 @@ class MdToOfficeConverter(BaseConverter):
             for li in elem.findall('li'):
                 runs = self._walk_html(li)
                 runs = self._strip_empty_runs(runs)
-                # Detect level from nesting (li inside li)
+                # Detect level from nesting depth by walking up the tree.
+                # A bare <li> in a top-level <ul>/<ol> → level 0.
+                # <li> nested inside another <li> (via a sub-<ul>/<ol>) → level 1, 2, …
                 level = 0
                 parent = li.getparent()
-                if parent is not None and parent.tag in ('ul', 'ol'):
-                    # Heuristic: depth-1 if parent is inside another li
+                while parent is not None and parent.tag in ('ul', 'ol'):
                     gp = parent.getparent()
                     if gp is not None and gp.tag == 'li':
-                        level = 1
+                        level += 1
+                        parent = gp.getparent()
+                    else:
+                        break
                 items.append({'runs': runs, 'level': level})
             if items:
                 blocks.append({'type': 'list', 'style': list_type, 'items': items})
@@ -2970,9 +2974,13 @@ class MdToOfficeConverter(BaseConverter):
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
 
-            # Strip empty <style></style> blocks that pandoc may emit
-            # when the highlight theme produces no CSS rules
-            html_body = re.sub(r'<style>\s*</style>', '', html_body)
+            # Only strip empty <style></style> blocks when code highlighting is disabled.
+            # When a highlight theme is active, pandoc injects CSS rules (e.g. .sourceCode .kw)
+            # that colorize code blocks — stripping them would leave code completely unstyled.
+            # The html_theme.css stylesheet provides general .code/.pre styling for plain code.
+            theme_arg = self.code_highlight_theme or 'pygments'
+            if theme_arg.lower() in _HIGHLIGHT_OFF:
+                html_body = re.sub(r'<style>\s*</style>', '', html_body)
 
             heading_counts = {}
             def add_anchor_to_heading(match):
@@ -3051,12 +3059,16 @@ class MdToOfficeConverter(BaseConverter):
         typography (headings, tables, code, lists, blockquote, print) is
         loaded from templates/html_theme.css so it can be iterated on
         without touching Python code.
+
+        The HTML theme CSS is a complete GitHub-styled stylesheet covering:
+        tables (striped rows, hover, borders), headings, lists, code blocks,
+        blockquotes, links, images, horizontal rules, and print media query.
         """
         # Layout: sidebar TOC + content
         github_floating_toc = """
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fff; margin: 0; padding: 0; }
         .container { max-width: 1200px; margin: 20px auto; display: flex; flex-direction: row; align-items: flex-start; }
-        .toc-container { width: 250px; flex-shrink: 0; position: -webkit-sticky; position: sticky; top: 20px; height: calc(100vh - 40px); overflow-y: auto; padding-right: 20px; border-right: 1px solid #e1e4e8; }
+        .toc-container { width: 250px; flex-shrink: 0; position: sticky; top: 20px; height: calc(100vh - 40px); overflow-y: auto; padding-right: 20px; border-right: 1px solid #e1e4e8; }
         .content-container { flex-grow: 1; padding-left: 30px; max-width: 800px; }
         .toc ul { list-style: none; padding-left: 0; } .toc li a { color: #0366d6; text-decoration: none; display: block; padding: 4px 0; font-size: 14px; }
         .toc li a:hover { text-decoration: underline; }
@@ -3068,16 +3080,74 @@ class MdToOfficeConverter(BaseConverter):
         try:
             theme_css = theme_css_path.read_text(encoding='utf-8')
         except OSError:
-            # Fallback to minimal embedded styles
-            theme_css = (
-                "h1, h2, h3 { font-weight: 600; line-height: 1.25; }"
-                "table { border-collapse: collapse; }"
-                "th, td { border: 1px solid #ddd; padding: 8px; }"
-                "th { background-color: #f2f2f2; }"
-                "code { background-color: #f6f8fa; padding: 2px 4px; border-radius: 3px; }"
-                "pre { padding: 16px; background-color: #f6f8fa; border-radius: 3px; overflow: auto; }"
-                "blockquote { color: #6a737d; border-left: 4px solid #dfe2e5; padding: 0 1em; }"
-            )
+            # Fallback: complete GitHub-style theme matching html_theme.css
+            # This is used when the template file is unavailable.
+            theme_css = """
+/* Markdown Hub – HTML / EPUB theme CSS (complete GitHub-style fallback) */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+                 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    color: #24292e;
+    background-color: #ffffff;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2em 1.5em;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin-top: 1.5em; margin-bottom: 0.5em; }
+h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+h3 { font-size: 1.25em; }
+h4 { font-size: 1em; }
+
+/* Tables (GitHub-style) */
+table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; max-width: 100%; }
+thead { background-color: #f6f8fa; }
+th, td { padding: 6px 13px; border: 1px solid #d0d7de; }
+th { font-weight: 600; background-color: #f6f8fa; color: #24292e; }
+tbody tr:nth-child(even) { background-color: #f6f8fa; }
+tr:hover { background-color: #f0f3f6; }
+td { color: #24292e; }
+
+/* Lists */
+ul, ol { padding-left: 2em; margin-top: 0.5em; margin-bottom: 0.5em; }
+li { margin: 0.25em 0; }
+li > p { margin: 0.25em 0; }
+li > ul, li > ol { margin: 0.25em 0; }
+.task-list-item { list-style: none; margin-left: -1.5em; }
+.task-list-item input[type="checkbox"] { margin-right: 0.5em; }
+
+/* Code */
+code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; background-color: rgba(27,31,35,0.05); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
+pre { background-color: #f6f8fa; border-radius: 6px; padding: 1em; overflow: auto; line-height: 1.45; }
+pre code { background-color: transparent; padding: 0; font-size: 0.95em; white-space: pre; }
+
+/* Blockquote */
+blockquote { margin: 1em 0; padding: 0 1em; color: #6a737d; border-left: 4px solid #dfe2e5; background-color: #fafbfc; }
+blockquote p { margin: 0.5em 0; }
+
+/* Links / Images */
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+img { max-width: 100%; height: auto; }
+
+/* Misc */
+hr { border: 0; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+strong { font-weight: 600; }
+em { font-style: italic; }
+del { color: #6a737d; }
+
+/* TOC */
+nav.toc { background-color: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 0.75em 1em; margin-bottom: 2em; }
+nav.toc ul { padding-left: 1.5em; }
+nav.toc a { color: #24292e; }
+
+/* Print */
+@media print { body { padding: 0; max-width: none; } a { color: #000; } nav.toc { display: none; } }
+"""
 
         return github_floating_toc + "\n" + theme_css
 
