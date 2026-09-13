@@ -1573,14 +1573,32 @@ class OfficeToMdConverter(BaseConverter):
 
                 for shape in slide.shapes:
                     if shape.has_table:
-                        # Render table as GFM pipe table
+                        # Render table as GFM pipe table with inline formatting
                         table = shape.table
                         rows_data = []
                         for row in table.rows:
                             cells = []
                             for cell in row.cells:
-                                text = cell.text.strip().replace('\n', '<br>').replace('|', '\\|')
-                                cells.append(text)
+                                # Extract rich text (bold/italic/code) from runs, not just cell.text
+                                cell_parts = []
+                                for p in cell.text_frame.paragraphs:
+                                    if cell_parts:
+                                        cell_parts.append('<br>')
+                                    for r in p.runs:
+                                        text = r.text
+                                        if not text:
+                                            continue
+                                        # Escape pipe characters for Markdown tables
+                                        text = text.replace('|', '\\|')
+                                        if r.bold and text:
+                                            text = f'**{text}**'
+                                        if r.font.name and ('Mono' in r.font.name or 'Courier' in r.font.name or 'Consolas' in r.font.name):
+                                            text = f'`{text}`'
+                                        elif r.italic and text:
+                                            text = f'*{text}*'
+                                        cell_parts.append(text)
+                                cell_text = ''.join(cell_parts).strip()
+                                cells.append(cell_text)
                             rows_data.append(cells)
                         if rows_data:
                             out = []
@@ -1592,7 +1610,12 @@ class OfficeToMdConverter(BaseConverter):
                         continue
 
                     if hasattr(shape, "text_frame") and shape.text_frame:
-                        # Detect lists by examining paragraph levels
+                        # Detect lists by examining paragraph levels.
+                        # - Multi-level lists: paragraphs with varying level values (level > 0)
+                        # - Single-level lists: paragraphs all have level 0 but have bullet formatting.
+                        #   We detect this by checking whether paragraphs have non-empty text AND
+                        #   the text content (p.text) does NOT start a new logical block
+                        #   (i.e. no Markdown heading or horizontal rule syntax).
                         tf = shape.text_frame
                         paras = list(tf.paragraphs)
                         has_list = any(p.level > 0 for p in paras)
