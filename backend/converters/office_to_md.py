@@ -677,9 +677,11 @@ class OfficeToMdConverter(BaseConverter):
 
     def _clean_markdown_title(self, title: str) -> str:
         title = title.strip()
+        title = re.sub(r'(^|(?<=[^{]))#{1,6}\s*', '', title)  # strip leading # only
         title = re.sub(r'\s+', ' ', title)
+        title = re.sub(r'[{][^}]*}[ ]*$', '', title)  # strip {#anchor} tail
         title = re.sub(r'[\[\]]', '', title)
-        return title
+        return title.strip()
 
     def _generate_anchor(self, title: str) -> str:
         anchor = title.lower()
@@ -1035,7 +1037,7 @@ class OfficeToMdConverter(BaseConverter):
             text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\t\r')
         except Exception:
             text = text.encode('ascii', errors='ignore').decode('ascii')
-        return text
+        return text.strip()
 
     def _detect_language_for_ocr(self, image) -> str:
         try:
