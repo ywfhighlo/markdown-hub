@@ -593,7 +593,11 @@ skinparam defaultFontSize 12"""
                 # 在!theme plain行之后插入字体配置
                 processed_lines.append(chinese_font_config)
                 config_inserted = True
-        
+
+        # 如果没有遇到!theme plain，就在开头插入字体配置
+        if not config_inserted:
+            processed_lines.insert(0, chinese_font_config)
+
         return '\n'.join(processed_lines)
     
     def _parse_plantuml_error(self, error_output: str) -> str:
