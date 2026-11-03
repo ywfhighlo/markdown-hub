@@ -3095,16 +3095,9 @@ blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.2em 1em; col
                                 )
                             except Exception as e:
                                 self.logger.warning(f"解析 document.xml 失败，跳过边框注入: {e}")
-                        if self.reproducible:
-                            # Strip filesystem timestamps for reproducible output.
-                            # Fresh ZipInfo has date_time=(1980,1,1,0,0,0) — deterministic.
-                            clean_item = zipfile.ZipInfo(item.filename)
-                            clean_item.compress_type = item.compress_type
-                            clean_item.comment = item.comment
-                            clean_item.external_attr = item.external_attr
-                            zout.writestr(clean_item, data)
-                        else:
-                            zout.writestr(item, data)
+                        # --reproducible 的时间戳归一统一由 _finalize_output 收口
+                        # （见 _make_docx_reproducible），这里只负责注入边框
+                        zout.writestr(item, data)
             if touched:
                 shutil.move(tmp_path, docx_path)
                 self.logger.info(f"为 {touched} 个表格注入了边框")
@@ -3187,14 +3180,8 @@ blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.2em 1em; col
                         data = zin.read(item.filename)
                         if item.filename == 'word/styles.xml':
                             data = styles_xml.encode('utf-8')
-                        if self.reproducible:
-                            clean_item = zipfile.ZipInfo(item.filename)
-                            clean_item.compress_type = item.compress_type
-                            clean_item.comment = item.comment
-                            clean_item.external_attr = item.external_attr
-                            zout.writestr(clean_item, data)
-                        else:
-                            zout.writestr(item, data)
+                        # 同上：时间戳归一统一由 _finalize_output 收口
+                        zout.writestr(item, data)
 
             shutil.move(tmp_path, docx_path)
             self.logger.info(f"注入了 {len(missing)} 个缺失的段落样式: {missing}")
@@ -3483,12 +3470,16 @@ nav.toc a { color: #24292e; }
         output_path = str(self.output_dir / f"{original_input_path.stem}.docx")
         
         try:
+            # --reproducible 时 document_no/date 也用固定时间基准——
+            # 它们会渲染进正文内容（word/document.xml），如果用当前时间，
+            # ZIP 时间戳和 core.xml 归一之后两次转换仍然不同。
+            now = _reproducible_dt() if self.reproducible else datetime.now()
             # 获取模板上下文数据
             context = {
                 'project_name': self.project_name or '',
                 'title': title,
-                'document_no': "P" + datetime.now().strftime("%Y%m%d%H%M%S"),
-                'date': datetime.now().strftime("%Y-%m-%d"),
+                'document_no': "P" + now.strftime("%Y%m%d%H%M%S"),
+                'date': now.strftime("%Y-%m-%d"),
                 'author': self.author or '',
                 'mobilephone': self.mobilephone or '',
                 'email': self.email or ''
