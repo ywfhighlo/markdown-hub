@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { executePythonScript } from './pythonService';
-import { checkDependencies, checkDependenciesWithQuickPick, precheckConversion, DependencyStatus } from './dependencyChecker';
+import { checkDependenciesWithQuickPick, precheckConversion } from './dependencyChecker';
 
 type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-to-epub' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
 
@@ -28,14 +28,6 @@ interface ConversionStats {
 
 const HISTORY_FILE = path.join(os.homedir(), '.markdown-hub', 'history.json');
 const MAX_HISTORY_RECORDS = 50;
-
-function getHistoryFilePath(): string {
-    const dir = path.dirname(HISTORY_FILE);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    return HISTORY_FILE;
-}
 
 function loadHistory(): HistoryRecord[] {
     try {

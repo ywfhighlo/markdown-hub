@@ -165,7 +165,7 @@ export function executePythonScript(
         pyProcess.stdout.on('data', (data) => {
             stdoutBuffer += data;
 
-            let lines = stdoutBuffer.split('\n');
+            const lines = stdoutBuffer.split('\n');
             stdoutBuffer = lines[lines.length - 1];
 
             lines.slice(0, -1).forEach(line => {
