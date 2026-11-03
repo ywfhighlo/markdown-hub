@@ -8,6 +8,9 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 - Phase C table merges (MD↔DOCX): pipe cells may use `[[colspan:N]]` / `[[rowspan:N]]` markers; preprocess rewrites those tables to pandoc `grid_tables` so Word gets real `gridSpan` / `vMerge`. DOCX→MD emits grid_tables when merges are present (plain tables stay GFM pipe).
 - TOC refresh without Word COM: prefer Word COM on Windows when pywin32 is available; otherwise LibreOffice headless docx↔odt round-trip; otherwise static python-docx rebuild of TOC-styled paragraphs / TOC field results.
+- DOCX→MD footnotes/endnotes: `word/footnotes.xml` / `endnotes.xml` → pandoc-native `[^fnN]` / `[^enN]` references and definition blocks (round-trips MD→DOCX→MD).
+- DOCX→MD OMML math: `m:oMath` / `oMathPara` → LaTeX `$...$` / `$$...$$` (fractions, scripts, radicals, n-ary, delimiters, accents, funcs, matrices, eqArr).
+- Helper module `backend/converters/docx_reverse.py`; wired into `_docx_to_markdown_structured`; tests in `backend/tests/test_docx_reverse.py`.
 
 ### Fixed
 
@@ -15,7 +18,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Notes / remaining gaps
 
-- DOCX→MD footnotes and OMML/math reverse still not implemented (left as-is; pandoc-native footnotes on MD→DOCX remain).
+- Complex OMML (nested matrices, some accents/groupChr/borderBox, Word equation builder quirks) may degrade to plain text fallback; endnote↔footnote id collisions across multi-part books not fully exercised.
 - LibreOffice TOC path is best-effort (depends on LO recalculating indexes on load/save); Word COM remains the most reliable refresher.
 - Nested / diagonal merges and HTML `<table rowspan>` are out of scope — use markers or native grid_tables.
 

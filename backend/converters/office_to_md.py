@@ -1324,78 +1324,101 @@ class OfficeToMdConverter(BaseConverter):
             return 0
 
     def _docx_to_markdown_structured(self, docx_path: Path) -> str:
-        """Walk a DOCX body in document order, emitting Markdown."""
+        """Walk a DOCX body in document order, emitting Markdown.
+
+        Preserves headings, lists, tables (incl. Phase C merges), images,
+        footnotes/endnotes as pandoc ``[^id]``, and OMML equations as
+        ``$...$`` / ``$$...$$``.
+        """
         from docx import Document
         from docx.oxml.ns import qn
+
+        from .docx_reverse import (
+            load_notes_from_docx,
+            remap_note_ids,
+            format_note_definitions,
+            latex_is_display,
+            omml_to_latex,
+            _paragraph_inline_md,
+            _ln,
+        )
 
         doc = Document(str(docx_path))
         lines: List[str] = []
 
-        # Map Word heading style names to Markdown levels
+        # Footnotes / endnotes → pandoc-native ids
+        raw_fn, raw_en = load_notes_from_docx(doc)
+        fn_id_map, fn_bodies = remap_note_ids(raw_fn, "fn")
+        en_id_map, en_bodies = remap_note_ids(raw_en, "en")
+
         HEADING_STYLES = {
-            'Heading 1': 1, 'Heading 2': 2, 'Heading 3': 3,
-            'Heading 4': 4, 'Heading 5': 5, 'Heading 6': 6,
-            'Title': 1,
+            "Heading 1": 1, "Heading 2": 2, "Heading 3": 3,
+            "Heading 4": 4, "Heading 5": 5, "Heading 6": 6,
+            "Title": 1,
         }
 
         def para_to_md(para):
-            """Convert a paragraph to a Markdown line, handling style + inline runs."""
-            style_name = para.style.name if para.style else ''
+            """Convert a paragraph to Markdown, including OMML + footnote refs."""
+            style_name = para.style.name if para.style else ""
+            para_el = para._p
 
-            # Heading
-            if style_name in HEADING_STYLES:
-                level = HEADING_STYLES[style_name]
-                text = para.text.strip()
-                if text:
-                    return f"{'#' * level} {text}"
+            # Display equation paragraph
+            if latex_is_display(para_el):
+                latex = ""
+                for child in para_el:
+                    if _ln(child.tag) in ("oMathPara", "oMath"):
+                        latex = omml_to_latex(child).strip()
+                        break
+                if latex:
+                    return f"$$\n{latex}\n$$"
                 return None
 
-            # List items: Word uses "List Bullet" / "List Number" styles
-            text = para.text.strip()
+            inline = _paragraph_inline_md(
+                para_el,
+                footnotes={},
+                endnotes={},
+                fn_id_map=fn_id_map,
+                en_id_map=en_id_map,
+            )
+            text = (inline or "").strip()
             if not text:
                 return None
 
-            if style_name.startswith('List Bullet'):
-                # Style name "List Bullet" / "List Bullet 2" / "List Bullet 3"
-                # encodes the nesting level — use it to indent.
-                level = self._list_level_from_style(style_name, 'List Bullet')
-                indent = '  ' * level  # 2 spaces per level
-                marker = '-'
-                return f"{indent}{marker} {text}"
-            if style_name.startswith('List Number'):
-                level = self._list_level_from_style(style_name, 'List Number')
-                indent = '  ' * level
+            if style_name in HEADING_STYLES:
+                level = HEADING_STYLES[style_name]
+                return f"{'#' * level} {text}"
+
+            if style_name.startswith("List Bullet"):
+                level = self._list_level_from_style(style_name, "List Bullet")
+                indent = "  " * level
+                return f"{indent}- {text}"
+            if style_name.startswith("List Number"):
+                level = self._list_level_from_style(style_name, "List Number")
+                indent = "  " * level
                 return f"{indent}1. {text}"
 
-            # Quote
-            if style_name == 'Quote' or style_name == 'Intense Quote':
+            if style_name in ("Quote", "Intense Quote"):
                 return f"> {text}"
 
-            # Inline formatting from runs
-            inline = self._runs_to_inline_md(para.runs)
-            return inline if inline else text
+            return text
 
         def cell_to_md(cell):
-            """Extract a Word table cell to markdown with inline formatting.
-            Walks paragraphs and runs to emit **bold**, *italic*, and `code`
-            markers instead of plain text.
-            """
+            """Extract a Word table cell to markdown with inline formatting."""
             parts = []
             for p in cell.paragraphs:
                 if parts:
-                    parts.append('<br>')
-                for r in p.runs:
-                    text = r.text.replace('|', '\\|')
-                    if not text:
-                        continue
-                    if r.bold:
-                        text = f'**{text}**'
-                    if r.italic:
-                        text = f'*{text}*'
-                    if r.font.name and ('Mono' in r.font.name or 'Courier' in r.font.name or 'Consolas' in r.font.name):
-                        text = f'`{text}`'
-                    parts.append(text)
-            return ''.join(parts).strip()
+                    parts.append("<br>")
+                inline = _paragraph_inline_md(
+                    p._p,
+                    footnotes={},
+                    endnotes={},
+                    fn_id_map=fn_id_map,
+                    en_id_map=en_id_map,
+                )
+                if inline:
+                    # Escape pipes for GFM tables
+                    parts.append(inline.replace("|", r"\|"))
+            return "".join(parts).strip()
 
         def table_to_md(table):
             """Convert a Word table to Markdown.
@@ -1419,72 +1442,82 @@ class OfficeToMdConverter(BaseConverter):
                     tc_id = id(cell._tc)
                     cell_text = cell_to_md(cell)
                     if tc_id in seen_tc_ids:
-                        cells.append('')
+                        cells.append("")
                     else:
                         seen_tc_ids.add(tc_id)
                         cells.append(cell_text)
                 rows.append(cells)
             if not rows:
-                return ''
+                return ""
             max_cols = max(len(r) for r in rows)
             for r in rows:
                 while len(r) < max_cols:
-                    r.append('')
+                    r.append("")
             out = []
-            out.append('| ' + ' | '.join(rows[0]) + ' |')
-            out.append('| ' + ' | '.join(['---'] * max_cols) + ' |')
+            out.append("| " + " | ".join(rows[0]) + " |")
+            out.append("| " + " | ".join(["---"] * max_cols) + " |")
             for r in rows[1:]:
-                out.append('| ' + ' | '.join(r) + ' |')
-            return '\n'.join(out)
+                out.append("| " + " | ".join(r) + " |")
+            return "\n".join(out)
 
         # Walk body children in document order (paragraphs + tables interleaved)
         body = doc.element.body
         para_idx = 0
         table_idx = 0
-        # Image extraction: save inline images to output_dir/<stem>_images/ and
-        # reference them from the markdown. Track counter across the walk.
         images_dir = docx_path.parent / f"{docx_path.stem}_images"
         images_dir.mkdir(parents=True, exist_ok=True)
         image_counter = 0
 
         for child in body.iterchildren():
-            tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
-            if tag == 'p':
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag == "p":
                 if para_idx < len(doc.paragraphs):
                     para = doc.paragraphs[para_idx]
-                    # Check for inline images in this paragraph
                     for run in para.runs:
                         for blip in run._r.findall(
-                            './/{http://schemas.openxmlformats.org/drawingml/2006/main}blip'
+                            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
                         ):
-                            rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
+                            rid = blip.get(
+                                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+                            )
                             if rid and rid in para.part.rels:
                                 rel = para.part.rels[rid]
-                                if 'image' in rel.reltype:
+                                if "image" in rel.reltype:
                                     image_counter += 1
-                                    ext = rel.target_ref.split('.')[-1] or 'png'
+                                    ext = rel.target_ref.split(".")[-1] or "png"
                                     img_filename = f"image{image_counter}.{ext}"
                                     img_path = images_dir / img_filename
                                     try:
-                                        with open(img_path, 'wb') as f:
+                                        with open(img_path, "wb") as f:
                                             f.write(rel.target_part.blob)
-                                        lines.append(f"![{img_filename}]({images_dir.name}/{img_filename})")
+                                        lines.append(
+                                            f"![{img_filename}]({images_dir.name}/{img_filename})"
+                                        )
                                     except Exception as e:
                                         self.logger.warning(f"Failed to extract image: {e}")
                     md_line = para_to_md(para)
                     if md_line is not None:
                         lines.append(md_line)
                     para_idx += 1
-            elif tag == 'tbl':
+            elif tag == "tbl":
                 if table_idx < len(doc.tables):
                     md_table = table_to_md(doc.tables[table_idx])
                     if md_table:
-                        lines.append('')
+                        lines.append("")
                         lines.append(md_table)
-                        lines.append('')
+                        lines.append("")
                     table_idx += 1
 
-        return '\n\n'.join(lines)
+        # Append footnote / endnote definitions (pandoc-native)
+        note_block = format_note_definitions({**fn_bodies, **en_bodies})
+        if note_block:
+            lines.append(note_block)
+
+        # Join block-level pieces with a blank line; keep internal newlines
+        # (display math) intact. Skip accidental empty pieces.
+        pieces = [x for x in lines if x is not None and str(x).strip() != ""]
+        return "\n\n".join(pieces)
+
 
     def _runs_to_inline_md(self, runs) -> str:
         """Convert a list of python-docx Runs to inline Markdown (bold/italic/code)."""
@@ -1877,6 +1910,14 @@ class OfficeToMdConverter(BaseConverter):
         return text
 
     def _preserve_math_formulas(self, text: str) -> str:
+        """Light cleanup for math already emitted by the DOCX structured walker.
+
+        OMML to LaTeX conversion happens in docx_reverse during structured walk.
+        This hook only collapses excess blank lines around math.
+        """
+        if "$" not in text:
+            return text
+        text = re.sub(r"\n{3,}", "\n\n", text)
         return text
 
     def _preserve_blockquotes(self, text: str) -> str:
