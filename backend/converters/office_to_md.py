@@ -446,6 +446,7 @@ class OfficeToMdConverter(BaseConverter):
 
             md_lines = []
             total_text_len = 0
+            all_images_md_parts = []  # kept across pages for OCR merge
 
             bookmarks_text = self._extract_pdf_bookmarks(doc)
             if bookmarks_text:
@@ -464,6 +465,9 @@ class OfficeToMdConverter(BaseConverter):
             for page_idx, page_spans in enumerate(all_page_spans):
                 page = doc[page_idx]
                 has_figure = False
+                # Reading-order items: (y0, seq, markdown_chunk)
+                page_flow = []
+                seq = 0
 
                 # 先尝试识别表格（PyMuPDF 1.23+）。失败或无结果都静默跳过。
                 page_tables = []
@@ -488,43 +492,49 @@ class OfficeToMdConverter(BaseConverter):
                     self.logger.info(f"第 {page_idx+1} 页识别到 {len(page_tables)} 个表格")
 
                 for span_info in page_spans:
-                    text = span_info["text"]
+                    text_line = span_info["text"]
                     bbox = span_info["bbox"]
 
-                    if self._is_header_footer(text, bbox, header_footer_texts, page_dict_for_size=None):
+                    if self._is_header_footer(text_line, bbox, header_footer_texts, page_dict_for_size=None):
                         continue
 
-                    # 落在任何一张表格 bbox 内的 span 跳过 —— 避免和表格输出重复
+                    # 落在任何一张表格 bbox 内的 span 跳过 — 避免和表格输出重复
                     if any(self._bbox_inside_rect(bbox, t["bbox"]) for t in page_tables if t.get("bbox")):
                         continue
 
-                    text = self._clean_text(text)
-                    if not text:
+                    text_line = self._clean_text(text_line)
+                    if not text_line:
                         continue
 
                     heading_level = self._detect_heading_level(span_info["spans"], heading_thresholds)
 
                     if heading_level:
                         prefix = "#" * heading_level
-                        md_lines.append(f"\n{prefix} {text}\n")
+                        chunk = f"\n{prefix} {text_line}\n"
                     else:
-                        md_lines.append(f"{text}\n")
+                        chunk = f"{text_line}\n"
 
-                    total_text_len += len(text)
+                    y0 = float(bbox[1]) if bbox and len(bbox) > 1 else 0.0
+                    page_flow.append((y0, seq, chunk))
+                    seq += 1
+                    total_text_len += len(text_line)
 
-                    if re.search(r'(Figure\s+\d+[:.])|(?<![如见看])(图\s*\d+)', text):
+                    if re.search(r'(Figure\s+\d+[:.])|(?<![如见看])(图\s*\d+)', text_line):
                         has_figure = True
 
-                # 输出本页识别到的表格（简化策略：先文本后表格）
+                # 表格按 bbox 参与阅读序
                 for t_idx, tb in enumerate(page_tables):
                     rendered = self._render_table_to_md(tb["rows"], page_idx + 1, t_idx + 1)
                     if rendered:
-                        md_lines.append(f"\n{rendered}\n")
+                        bb = tb.get("bbox")
+                        y0 = float(bb[1]) if bb and len(bb) > 1 else 1e8
+                        page_flow.append((y0, seq, f"\n{rendered}\n"))
+                        seq += 1
 
-                extracted_images_md = ""
-
-                # 嵌入位图提取；同时收集"是否需要保底渲染"的信号
+                page_images_md = ""
                 image_block_count = 0
+
+                # 嵌入位图提取；带 bbox 时插入阅读序，否则挂页末
                 try:
                     image_list = page.get_images(full=True)
                     if image_list:
@@ -558,10 +568,14 @@ class OfficeToMdConverter(BaseConverter):
                                 caption = self._generate_image_caption(image_info, page_idx + 1, img_idx + 1)
 
                                 if image_info.get("is_chart"):
-                                    extracted_images_md += f"\n> 📊 {caption}\n![{caption}]({relative_path})\n\n"
+                                    img_md = f"\n> 📊 {caption}\n![{caption}]({relative_path})\n\n"
                                 else:
-                                    extracted_images_md += f"\n![{caption}]({relative_path})\n\n"
+                                    img_md = f"\n![{caption}]({relative_path})\n\n"
 
+                                y0 = self._pdf_image_y0(page, xref)
+                                page_flow.append((y0, seq, img_md))
+                                seq += 1
+                                page_images_md += img_md
                                 self.logger.info(f"提取图片: {image_name} ({image_info.get('size_str', 'unknown')})")
                             except Exception as img_e:
                                 self.logger.warning(f"提取图片 xref={xref} 失败: {img_e}")
@@ -569,8 +583,7 @@ class OfficeToMdConverter(BaseConverter):
                     self.logger.warning(f"提取第 {page_idx+1} 页图片时出错: {img_e}")
 
                 # 保底：嵌入位图为空 + 页面有图像类内容时，整页渲染
-                # 解决 "完全不生成 _assets" 问题（矢量绘制/绘制流的图，get_images 返回空）
-                if not extracted_images_md:
+                if not page_images_md:
                     try:
                         page_dict = page.get_text("dict")
                         image_block_count = sum(
@@ -588,7 +601,6 @@ class OfficeToMdConverter(BaseConverter):
                         need_snapshot = True
                         snapshot_reason = f"页面包含 {image_block_count} 个图像块"
                     elif not page_spans and total_text_len == 0:
-                        # 纯图页（没有任何文本）—— 也保底渲染
                         need_snapshot = True
                         snapshot_reason = "页面无文本，疑似纯图页"
 
@@ -603,9 +615,10 @@ class OfficeToMdConverter(BaseConverter):
                             render_path = assets_dir / render_filename
                             pix.save(str(render_path))
 
-                            # 用渲染产物尺寸走一次过滤，避免对纯文字页也盲目渲染
+                            # Pass real PNG bytes (not file size int) into the filter.
+                            png_bytes = render_path.read_bytes() if render_path.exists() else b""
                             image_info = self._analyze_pdf_image(
-                                render_path.stat().st_size if render_path.exists() else 0,
+                                png_bytes,
                                 pix.width, pix.height,
                             )
                             if image_info.get("skip_reason"):
@@ -620,26 +633,37 @@ class OfficeToMdConverter(BaseConverter):
                                 self.logger.info(
                                     f"渲染页面快照: {render_filename}（{snapshot_reason}）"
                                 )
-                                extracted_images_md += (
+                                snap_md = (
                                     f"\n> **Page {page_idx+1} Snapshot**\n\n"
                                     f"![Page {page_idx+1} Render]({relative_path})\n\n"
                                 )
+                                # Full-page snapshot stays at end of page flow
+                                page_flow.append((1e12, seq, snap_md))
+                                seq += 1
+                                page_images_md += snap_md
                         except Exception as render_e:
                             self.logger.warning(f"渲染第 {page_idx+1} 页失败: {render_e}")
 
-                if extracted_images_md:
-                    md_lines.append(f"\n## 提取的图片\n\n{extracted_images_md}")
+                # Emit page content in reading order (top → bottom)
+                page_flow.sort(key=lambda it: (it[0], it[1]))
+                for _, _, chunk in page_flow:
+                    md_lines.append(chunk)
+
+                if page_images_md:
+                    all_images_md_parts.append(page_images_md.strip())
 
             if total_tables_found > 0:
                 self.logger.info(f"全文共识别到 {total_tables_found} 个表格")
 
             md_text = "\n".join(md_lines)
+            images_blob = "\n\n".join(all_images_md_parts)
 
             if total_text_len < 100 and _pypdf_available():
                 self.logger.info(f"{pdf_path.name} 可能是扫描版PDF，尝试使用OCR...")
                 ocr_result = self._ocr_pdf(pdf_path)
                 if ocr_result and len(ocr_result.strip()) > total_text_len:
-                    md_text = ocr_result
+                    # Do NOT drop already-extracted image refs when OCR wins
+                    md_text = self._merge_ocr_with_extracted_images(ocr_result, images_blob)
 
             return md_text
 
@@ -978,11 +1002,58 @@ class OfficeToMdConverter(BaseConverter):
 
         return "\n".join(out_lines)
 
-    def _analyze_pdf_image(self, image_data: bytes, width: int, height: int) -> Dict:
+    def _pdf_image_y0(self, page, xref) -> float:
+        """Best-effort top Y of an embedded image on the page (reading order)."""
+        try:
+            rects = page.get_image_rects(xref)
+            if rects:
+                r0 = rects[0]
+                # Rect or (Rect, Matrix)
+                if isinstance(r0, (tuple, list)):
+                    r0 = r0[0]
+                return float(getattr(r0, "y0", r0[1] if len(r0) > 1 else 0.0))
+        except Exception:
+            pass
+        try:
+            info_list = page.get_image_info(xrefs=True)
+            for info in info_list or []:
+                if info.get("xref") == xref:
+                    bbox = info.get("bbox") or info.get("transform")
+                    if bbox is not None and len(bbox) >= 2:
+                        return float(bbox[1])
+        except Exception:
+            pass
+        return 1e9  # unknown -> near end of page flow
+
+    def _merge_ocr_with_extracted_images(self, ocr_text: str, images_md: str) -> str:
+        """Keep already-extracted image refs when OCR replaces body text."""
+        ocr = (ocr_text or "").rstrip()
+        imgs = (images_md or "").strip()
+        if not imgs:
+            return ocr_text or ""
+        if not ocr:
+            return imgs
+        # Avoid duplicating if OCR somehow already references assets
+        if "_assets/" in ocr and "![" in ocr:
+            return ocr
+        return ocr + '\n\n## 提取的图片\n\n' + imgs + '\n'
+
+    def _analyze_pdf_image(self, image_data, width: int, height: int) -> Dict:
+        # Accept raw bytes (preferred) or a byte-length int (legacy callers).
+        if isinstance(image_data, (bytes, bytearray, memoryview)):
+            size = len(image_data)
+        elif isinstance(image_data, int):
+            size = image_data
+        else:
+            try:
+                size = len(image_data)
+            except TypeError:
+                size = 0
+
         info = {
             "width": width,
             "height": height,
-            "size": len(image_data),
+            "size": size,
             "size_str": "",
             "is_chart": False,
             "is_icon": False,

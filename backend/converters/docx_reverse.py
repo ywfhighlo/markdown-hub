@@ -300,22 +300,38 @@ def omml_to_latex(el: ET.Element) -> str:
         return out
 
     if name == "d":  # delimiter
-        e = _first_child(el, "e")
         dpr = _first_child(el, "dPr")
         beg, end = "(", ")"
         if dpr is not None:
             b = _first_child(dpr, "begChr")
             en = _first_child(dpr, "endChr")
+            # Empty string means invisible fence (\left. / \right.)
             if b is not None:
-                beg = b.get(f"{{{M_NS}}}val") or b.get("val") or beg
+                beg = b.get(f"{{{M_NS}}}val")
+                if beg is None:
+                    beg = b.get("val")
+                if beg is None:
+                    beg = "("
+                if beg == "":
+                    beg = "."
             if en is not None:
-                end = en.get(f"{{{M_NS}}}val") or en.get("val") or end
-        body = omml_to_latex(e) if e is not None else ""
-        # multiple e children for cases like (a,b)
-        if e is None:
-            bodies = [omml_to_latex(c) for c in _children_elems(el) if _ln(c.tag) == "e"]
-            body = ",".join(bodies)
-        return r"\left" + beg + body + r"\right" + end
+                end = en.get(f"{{{M_NS}}}val")
+                if end is None:
+                    end = en.get("val")
+                if end is None:
+                    end = ")"
+                if end == "":
+                    end = "."
+        bodies = [omml_to_latex(c) for c in _children_elems(el) if _ln(c.tag) == "e"]
+        body = ",".join(bodies)
+        # Escape fence chars that need \left/\right forms
+        def _fence(ch: str) -> str:
+            if ch in ".()[]|/":
+                return ch
+            if ch in "{}":
+                return "\\" + ch
+            return ch
+        return r"\left" + _fence(beg) + body + r"\right" + _fence(end)
 
     if name == "acc":
         e = _first_child(el, "e")
@@ -355,15 +371,57 @@ def omml_to_latex(el: ET.Element) -> str:
 
     if name == "groupChr":
         e = _first_child(el, "e")
-        return omml_to_latex(e) if e is not None else ""
+        body = omml_to_latex(e) if e is not None else ""
+        gpr = _first_child(el, "groupChrPr")
+        ch = ""
+        pos = ""
+        if gpr is not None:
+            chr_el = _first_child(gpr, "chr")
+            pos_el = _first_child(gpr, "pos")
+            if chr_el is not None:
+                ch = chr_el.get(f"{{{M_NS}}}val") or chr_el.get("val") or ""
+            if pos_el is not None:
+                pos = pos_el.get(f"{{{M_NS}}}val") or pos_el.get("val") or ""
+        # underbrace U+23DF, overbrace U+23DE
+        if ch in (chr(0x23DF), "_") or pos == "bot":
+            return r"\underbrace{" + body + "}"
+        if ch in (chr(0x23DE), "^") or pos == "top":
+            return r"\overbrace{" + body + "}"
+        return body
 
     if name == "borderBox":
         e = _first_child(el, "e")
-        return omml_to_latex(e) if e is not None else ""
+        return r"\boxed{" + (omml_to_latex(e) if e is not None else "") + "}"
 
     if name == "box":
         e = _first_child(el, "e")
         return omml_to_latex(e) if e is not None else ""
+
+    if name == "limLow":
+        e = _first_child(el, "e")
+        lim = _first_child(el, "lim")
+        return (
+            "{"
+            + (omml_to_latex(e) if e is not None else "")
+            + "}_{"
+            + (omml_to_latex(lim) if lim is not None else "")
+            + "}"
+        )
+
+    if name == "limUpp":
+        e = _first_child(el, "e")
+        lim = _first_child(el, "lim")
+        return (
+            "{"
+            + (omml_to_latex(e) if e is not None else "")
+            + "}^{"
+            + (omml_to_latex(lim) if lim is not None else "")
+            + "}"
+        )
+
+    if name == "phant":
+        e = _first_child(el, "e")
+        return r"\phantom{" + (omml_to_latex(e) if e is not None else "") + "}"
 
     if name == "eqArr":
         rows = [_first_child(c, "e") if _ln(c.tag) == "e" else c for c in _children_elems(el) if _ln(c.tag) == "e"]
@@ -379,7 +437,7 @@ def omml_to_latex(el: ET.Element) -> str:
             rows.append(" & ".join(cells))
         return r"\begin{matrix}" + r" \\ ".join(rows) + r"\end{matrix}"
 
-    if name in ("e", "num", "den", "sub", "sup", "deg", "fName"):
+    if name in ("e", "num", "den", "sub", "sup", "deg", "fName", "lim"):
         return "".join(omml_to_latex(c) for c in _children_elems(el))
 
     # Properties / unknown: skip props, recurse into content-bearing children

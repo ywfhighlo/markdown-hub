@@ -4,7 +4,19 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ## [0.3.6] - 2026-11-03
 
+### Fixed
+
+- PDF→MD: page-snapshot filter no longer passes `Path.stat().st_size` (int) into `_analyze_pdf_image` (expects bytes) — snapshots were wrongly skipped as "too small"
+- PDF→MD: when OCR replaces sparse text, already-extracted `_assets/` image refs are merged back instead of being dropped
+
+### Changed
+
+- PDF→MD: embedded images are interleaved into page reading order by bbox Y (text / tables / images) instead of only dumping under `## 提取的图片` at page end; full-page snapshots still append at page end
+- DOCX→MD OMML: deeper coverage for `limLow` / `limUpp`, `borderBox`→`\boxed`, `phant`→`\phantom`, `groupChr` under/overbrace, multi-`e` delimiters, invisible fences
+
 ### Added
+
+- Tests: `backend/tests/test_pdf_images_omml.py` (PDF image flow / OCR merge / snapshot bytes filter + OMML edge cases)
 
 - Phase C table merges (MD↔DOCX): pipe cells may use `[[colspan:N]]` / `[[rowspan:N]]` markers; preprocess rewrites those tables to pandoc `grid_tables` so Word gets real `gridSpan` / `vMerge`. DOCX→MD emits grid_tables when merges are present (plain tables stay GFM pipe).
 - TOC refresh without Word COM: prefer Word COM on Windows when pywin32 is available; otherwise LibreOffice headless docx↔odt round-trip; otherwise static python-docx rebuild of TOC-styled paragraphs / TOC field results.
@@ -18,7 +30,7 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Notes / remaining gaps
 
-- Complex OMML (nested matrices, some accents/groupChr/borderBox, Word equation builder quirks) may degrade to plain text fallback; endnote↔footnote id collisions across multi-part books not fully exercised.
+- Very exotic OMML (Word equation-builder quirks, diagonal constructs) may still degrade to plain text; endnote↔footnote id collisions across multi-part books not fully exercised. PDF OCR still does not embed page raster images into MD.
 - LibreOffice TOC path is best-effort (depends on LO recalculating indexes on load/save); Word COM remains the most reliable refresher.
 - Nested / diagonal merges and HTML `<table rowspan>` are out of scope — use markers or native grid_tables.
 
