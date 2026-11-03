@@ -158,7 +158,7 @@ function installHintFor(cmd: string): string {
     return hints[platformKey()] || hints.linux || cmd;
 }
 
-function checkCommandExists(command: string, versionFlag: string = '--version'): boolean {
+function checkCommandExists(command: string, versionFlag = '--version'): boolean {
     try {
         execSync(`${command} ${versionFlag}`, { stdio: 'ignore' });
         return true;
@@ -351,8 +351,8 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
 
     // If user selected an issue item with an install command, run it
     if (selection && selection.label) {
-        // Strip icon prefix (❌ / ⚠️ / ℹ️) to match the lookup key
-        const label = selection.label.replace(/^[❌⚠️ℹ️✅]\s*/, '');
+        // Strip icon prefix (❌ / ⚠️ / ℹ️ / ✅, with optional VS16) to match the lookup key
+        const label = selection.label.replace(/^[\u274C\u26A0\u2139\u2705]\uFE0F?\s*/, '');
         const cmd = labelToInstall[label];
         if (cmd) {
             // Check if it's a pip command (can auto-run) vs a URL (open in browser)

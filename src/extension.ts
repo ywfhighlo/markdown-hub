@@ -58,8 +58,8 @@ async function handleBatchPdfToPng(uri: vscode.Uri, context: vscode.ExtensionCon
         location: vscode.ProgressLocation.Notification,
         title: "Converting single-page PDFs to PNG...",
         cancellable: false
-    }, async (progress, token) => {
-        return new Promise<void>((resolve, reject) => {
+    }, async (progress, _token) => {
+        return new Promise<void>((resolve, _reject) => {
             const args = [scriptPath, targetDir];
             if (popplerPath) {
                 args.push('--poppler-path', popplerPath);
