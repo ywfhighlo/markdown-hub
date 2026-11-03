@@ -128,6 +128,17 @@ def main():
                        help='DPI for SVG to PNG (default: 300)')
     parser.add_argument('--svg-output-width', type=int, default=800,
                        help='Output width for SVG to PNG (default: 800px)')
+    parser.add_argument('--enable-crossref', action='store_true',
+                       help='Use pandoc-crossref when available (figure/table/eq numbering & @fig: refs)')
+    parser.add_argument('--enable-citeproc', action='store_true',
+                       help='Enable pandoc --citeproc (citations); also implied by --bibliography')
+    parser.add_argument('--bibliography', default='',
+                       help='Path to BibTeX/CSL-JSON bibliography for citeproc')
+    parser.add_argument('--csl', default='',
+                       help='Path to CSL style file for citeproc')
+    parser.add_argument('--book', action='store_true',
+                       help='Treat --input-path as a book chapter list / manifest '
+                            '(.book.yml / .chapters / .book.json) and assemble into one DOCX/PDF/HTML/EPUB')
     parser.add_argument('--reproducible', action='store_true',
                        help='Normalize timestamps (ZIP entries + DOCX core properties) so '
                             'repeated conversions of the same input are byte-for-byte '
@@ -187,6 +198,11 @@ def main():
             'svg_output_width': args.svg_output_width,
             # B5: reproducible output flag
             'reproducible': args.reproducible,
+            'enable_crossref': args.enable_crossref,
+            'enable_citeproc': args.enable_citeproc,
+            'bibliography': args.bibliography,
+            'csl': args.csl,
+            'book_mode': args.book,
         }
 
         # Extract output_format from conversion_type and pass it through.

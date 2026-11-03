@@ -450,6 +450,34 @@
           "markdownDescription": "**Code Block Highlight Theme**\n\nSyntax highlight style for fenced code blocks in DOCX/PDF/HTML outputs. Uses pandoc built-in themes. Set to `off` to disable highlighting. PPTX output is unaffected.",
           "scope": "window",
           "order": 65
+        },
+        "markdown-hub.enableCrossref": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Enable pandoc-crossref**\n\nWhen available on PATH, pass `--filter pandoc-crossref` for figure/table/equation numbering and `@fig:` / `@tbl:` cross-references. Degrades with a log warning if the filter is missing.",
+          "scope": "window",
+          "order": 70
+        },
+        "markdown-hub.enableCiteproc": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Enable citeproc**\n\nPass pandoc `--citeproc` for citations. Also implied when a bibliography path is set.",
+          "scope": "window",
+          "order": 71
+        },
+        "markdown-hub.bibliography": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**Bibliography file**\n\nPath to a BibTeX (`.bib`) or CSL-JSON bibliography for citeproc.",
+          "scope": "window",
+          "order": 72
+        },
+        "markdown-hub.csl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "**CSL style**\n\nOptional Citation Style Language (`.csl`) file for citeproc formatting.",
+          "scope": "window",
+          "order": 73
         }
       }
     }

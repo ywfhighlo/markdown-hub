@@ -385,7 +385,7 @@ export async function handleConvertCommand(
 
             let conversionOptions: any = null;
 
-            if (['md-to-docx', 'md-to-pdf', 'md-to-pptx', 'md-to-epub'].includes(conversionType)) {
+            if (['md-to-docx', 'md-to-pdf', 'md-to-html', 'md-to-pptx', 'md-to-epub'].includes(conversionType)) {
                 const sharedOptions = {
                     projectName: config.get<string>('projectName', ''),
                     author: config.get<string>('author', ''),
@@ -393,7 +393,11 @@ export async function handleConvertCommand(
                     mobilephone: config.get<string>('mobilephone', ''),
                     promoteHeadings: config.get<boolean>('promoteHeadings', true),
                     // Code block highlight theme (pandoc --highlight-style), only affects DOCX/PDF/HTML
-                    codeHighlightTheme: config.get<string>('codeHighlightTheme', 'pygments')
+                    codeHighlightTheme: config.get<string>('codeHighlightTheme', 'pygments'),
+                    enableCrossref: config.get<boolean>('enableCrossref', false),
+                    enableCiteproc: config.get<boolean>('enableCiteproc', false),
+                    bibliography: config.get<string>('bibliography', ''),
+                    csl: config.get<string>('csl', '')
                 };
                 conversionOptions = { ...sharedOptions };
 

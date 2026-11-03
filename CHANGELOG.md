@@ -33,6 +33,16 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Fixed
 
+- Preprocess no longer strips heading numbers (`1.2.3`) or `fig:` image caption prefixes (needed for pandoc-crossref / commercial docs)
+- Footnotes: stop rewriting pandoc `[^id]` / `[^id]:` into a broken trailing `## 脚注` section — leave native footnotes alone so Word gets real footnotes
+- Definition lists: stop smashing pandoc `Term` / `: Def` (and `Term: Def`) into `- **Term**: …` bullets — preserve Definition semantics
+
+### Added
+
+- Optional `pandoc-crossref` / citeproc wiring: CLI `--enable-crossref`, `--enable-citeproc`, `--bibliography`, `--csl` and matching VS Code settings; degrades with a clear log if the filter is missing
+- Multi-file book assemble: `--book` or a `*.book.yml` / `.chapters` / `.book.json` chapter list → one DOCX/PDF/HTML/EPUB with `--toc`
+- No-template DOCX reference doc now sets CJK `eastAsia` fonts (SimSun / SimHei) alongside Times New Roman
+
 - Pipe-table column alignment (`:---:` / `---:` / `:---`) now respected in output
 - Escaped pipes (`\|`) inside table cells no longer break column structure, across MD→Office and XLSX/PDF→MD paths
 - Progress-bar labels now translate correctly (stage keys aligned between frontend and backend)

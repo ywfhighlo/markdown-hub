@@ -261,6 +261,14 @@ class MdToOfficeConverter(BaseConverter):
         # 代码块高亮主题（pandoc --highlight-style）
         self.code_highlight_theme = kwargs.get('code_highlight_theme', 'pygments')
 
+        # Scholarly / commercial-doc options (graceful if tools missing)
+        self.enable_crossref = bool(kwargs.get('enable_crossref', False))
+        self.enable_citeproc = bool(kwargs.get('enable_citeproc', False))
+        self.bibliography = (kwargs.get('bibliography') or '').strip()
+        self.csl = (kwargs.get('csl') or '').strip()
+        # Book assemble: treat input as chapter list / book manifest
+        self.book_mode = bool(kwargs.get('book_mode', False))
+
         # PPTX SVG 转换模式配置 - 使用默认值
         self.pptx_svg_mode = 'full'
 
@@ -337,7 +345,47 @@ class MdToOfficeConverter(BaseConverter):
     def convert(self, input_path: str) -> List[str]:
         """
         Main conversion entry point. Handles both single files and directories.
+        With book_mode (or a *.book.yml / chapters manifest), assembles chapters
+        into one Markdown then converts once (single TOC / numbering space).
         """
+        from .book_assemble import looks_like_book_manifest, assemble_book_markdown
+
+        if self.book_mode or looks_like_book_manifest(input_path):
+            # Ensure --toc and other book flags apply even when auto-detected
+            self.book_mode = True
+            assembled_path, meta = assemble_book_markdown(
+                input_path, work_dir=str(self.output_dir)
+            )
+            self.logger.info(
+                f"Book assemble: {len(meta.get('chapters', []))} chapters -> {assembled_path}"
+            )
+            # One-shot convert of the assembled manuscript
+            output_file = self._convert_single_file(assembled_path)
+            outputs = []
+            if output_file:
+                # Prefer a stable book title for the final filename when given
+                title = (meta.get("title") or Path(assembled_path).stem).strip()
+                final = self._finalize_output(output_file)
+                safe = re.sub(r"[^\w\-]+", "_", title, flags=re.UNICODE).strip("_")[:80] or "book"
+                final_path = Path(final)
+                desired = final_path.with_name(f"{safe}{final_path.suffix}")
+                if desired.resolve() != final_path.resolve():
+                    try:
+                        if desired.exists():
+                            desired.unlink()
+                        final_path.replace(desired)
+                        final = str(desired)
+                    except OSError as e:
+                        self.logger.warning(f"Could not rename book output to {desired.name}: {e}")
+                outputs.append(final)
+            try:
+                Path(assembled_path).unlink(missing_ok=True)
+            except Exception:
+                pass
+            if not outputs and self._last_failure_reason:
+                raise RuntimeError(self._last_failure_reason)
+            return outputs
+
         if not self._is_valid_input(input_path, ['.md']):
             raise ValueError(f"Invalid input file or directory: {input_path}")
 
@@ -507,7 +555,7 @@ class MdToOfficeConverter(BaseConverter):
                 '--quiet'
             ]
             # Apply shared arguments (highlight style)
-            cmd.extend(self._highlight_style_args())
+            cmd.extend(self._common_pandoc_args())
             # EPUB supports MathML for math rendering (unlike HTML which uses MathJax)
             cmd.append('--mathml')
 
@@ -2290,11 +2338,8 @@ class MdToOfficeConverter(BaseConverter):
         # 在标题提级之前先保存原始标题（用于模板中的{{title}}）
         self._original_title = self._extract_original_title(content)
 
-        # 标题序号处理
-        content = re.sub(r'^(#+)\s*(\d+(\.*\d+)*\s+)', r'\1 ', content, flags=re.MULTILINE)
-        content = re.sub(r'^(#+)\s*(\d+(\.*\d+)*\.\s+)', r'\1 ', content, flags=re.MULTILINE)
-        content = re.sub(r'(!\[)(fig:.*?)(\])', r'\1\3', content)
-        
+        # Preserve heading numbers and fig: caption prefixes for pandoc-crossref
+        # / commercial docs. Do NOT strip \d+(\.\d+)* heading numbers or fig: alt text.
         # 自定义标题提级处理：二级标题提为一级，一级标题保持一级
         if self.promote_headings:
             content = self._custom_promote_headings(content)
@@ -2469,6 +2514,53 @@ class MdToOfficeConverter(BaseConverter):
         self.logger.warning(f"未识别的高亮主题 '{theme}'，回退到 pygments")
         return ['--highlight-style=pygments']
 
+
+    def _scholarly_pandoc_args(self) -> List[str]:
+        """Optional pandoc-crossref + citeproc args; degrade gracefully if missing."""
+        args: List[str] = []
+
+        if self.enable_crossref:
+            crossref = resolve_command("pandoc-crossref")
+            if crossref:
+                args.extend(["--filter", crossref])
+                self.logger.info(f"pandoc-crossref enabled: {crossref}")
+            else:
+                self.logger.warning(
+                    "enable_crossref is on but pandoc-crossref was not found on PATH; "
+                    "skipping filter (install: https://github.com/lierdakil/pandoc-crossref)"
+                )
+
+        want_cite = self.enable_citeproc or bool(self.bibliography)
+        if want_cite:
+            if self.bibliography:
+                bib = Path(self.bibliography)
+                if bib.is_file():
+                    args.extend(["--bibliography", str(bib.resolve())])
+                else:
+                    self.logger.warning(
+                        f"bibliography path not found: {self.bibliography}; citeproc may fail"
+                    )
+            if self.csl:
+                csl = Path(self.csl)
+                if csl.is_file():
+                    args.extend(["--csl", str(csl.resolve())])
+                else:
+                    self.logger.warning(f"CSL path not found: {self.csl}")
+            # pandoc 2.11+ has built-in citeproc
+            args.append("--citeproc")
+            self.logger.info("citeproc enabled")
+
+        return args
+
+    def _common_pandoc_args(self) -> List[str]:
+        """Shared highlight + scholarly flags for DOCX/PDF/HTML/EPUB pandoc invocations."""
+        args = self._highlight_style_args() + self._scholarly_pandoc_args()
+        if self.book_mode:
+            # Single-volume TOC for assembled books
+            if "--toc" not in args:
+                args.append("--toc")
+        return args
+
     def _process_enhanced_markdown(self, content: str) -> str:
         r"""
         Enhanced Markdown syntax preprocessor.
@@ -2545,75 +2637,28 @@ class MdToOfficeConverter(BaseConverter):
         return content
     
     def _process_footnotes(self, content: str) -> str:
-        """处理脚注支持"""
-        
-        # 收集所有脚注定义
-        footnote_pattern = r'\[\^([^\]]+)\]:\s*(.+?)(?=\n\[\^|\n\n|\Z)'
-        footnotes = {}
-        
-        def save_footnote(match):
-            footnote_id = match.group(1)
-            footnote_text = match.group(2).strip()
-            footnotes[footnote_id] = footnote_text
-            return ""  # 移除定义行
-        
-        # 提取所有脚注定义
-        content = re.sub(footnote_pattern, save_footnote, content, flags=re.DOTALL)
-        
-        # 在文档末尾添加脚注部分
-        if footnotes:
-            content += "\n\n## 脚注\n\n"
-            for footnote_id, footnote_text in footnotes.items():
-                content += f"[^{footnote_id}] {footnote_text}\n\n"
-        
+        """Leave pandoc-native footnotes alone.
+
+        Pandoc already understands [^id] references and [^id]: definitions and
+        maps them to real Word footnotes. Earlier rewrites that moved definitions
+        into a trailing ``## 脚注`` section (often without the required colon)
+        broke that pipeline — so this is intentionally a no-op.
+        """
         return content
-    
+
     def _process_definition_lists(self, content: str) -> str:
-        """处理定义列表支持"""
+        """Leave pandoc definition lists alone.
 
-        # 匹配多行定义格式（术语换行后跟: 定义）
-        def replace_multiline_def(match):
-            term = match.group(1).strip()
-            definition = match.group(2).strip()
-            return f"- **{term}**: {definition}\n"
+        Pandoc's ``definition_lists`` extension understands::
 
-        # 匹配同一行定义格式（术语: 定义）
-        # 排除不应被当作定义列表的行：
-        #   - 表格行（以 | 开头，含表格分隔行 |---|）
-        #   - ATX 标题（# 开头）
-        #   - 已是列表项的行（- * + 或 数字. 开头）
-        #   - YAML front matter 块（成对的 --- 围栏内的 key: value 行）
-        lines = content.split('\n')
-        in_yaml = False
-        yaml_fence_seen = False
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped == '---':
-                if not yaml_fence_seen:
-                    in_yaml = True
-                    yaml_fence_seen = True
-                    continue
-                else:
-                    in_yaml = False
-                    continue
-            if in_yaml:
-                continue
-            # 跳过表格/标题/列表/引用/代码围栏等行
-            if (
-                line.lstrip().startswith('|')
-                or line.lstrip().startswith('#')
-                or re.match(r'^\s*([-*+]|\d+\.)\s', line)
-                or line.lstrip().startswith('>')
-                or stripped.startswith('```')
-            ):
-                continue
-            lines[i] = re.sub(
-                r'^([^:\n]+):\s*(.+)$',
-                r'- **\1**: \2',
-                line
-            )
-        return '\n'.join(lines)
-    
+            Term
+            : Definition
+
+        Rewriting those (or ``Term: Definition`` lines) into ``- **Term**: …``
+        bullet lists destroys Definition semantics in DOCX/PDF. No-op.
+        """
+        return content
+
     def _process_abbreviations(self, content: str) -> str:
         """处理缩写词支持"""
         
@@ -2682,7 +2727,7 @@ class MdToOfficeConverter(BaseConverter):
                     '--quiet'
                 ]
                 # 代码块高亮（pandoc --highlight-style / --no-highlight）
-                cmd.extend(self._highlight_style_args())
+                cmd.extend(self._common_pandoc_args())
                 # 标题提级现在在预处理阶段处理，不再使用Pandoc参数
                 # if self.promote_headings:
                 #     cmd.append('--shift-heading-level-by=-1')
@@ -2751,7 +2796,7 @@ class MdToOfficeConverter(BaseConverter):
                     '--quiet'
                 ]
                 # 代码块高亮（pandoc --highlight-style / --no-highlight）
-                cmd.extend(self._highlight_style_args())
+                cmd.extend(self._common_pandoc_args())
 
                 # 如果没有提供模板，创建一个简单的参考文档来控制字体
                 if not (self.template_path and Path(self.template_path).exists()):
@@ -2776,7 +2821,17 @@ class MdToOfficeConverter(BaseConverter):
                         normal_font.size = Pt(12)
                         normal_font.italic = False
                         normal_font.bold = False
-                        
+                        # CJK east-Asia font when no user template (Word uses eastAsia for CJK runs)
+                        try:
+                            from docx.oxml.ns import qn
+                            rpr = normal_style.element.get_or_add_rPr()
+                            rfonts = rpr.get_or_add_rFonts()
+                            rfonts.set(qn('w:eastAsia'), 'SimSun')
+                            rfonts.set(qn('w:ascii'), 'Times New Roman')
+                            rfonts.set(qn('w:hAnsi'), 'Times New Roman')
+                        except Exception as e:
+                            self.logger.debug(f"Could not set eastAsia font on Normal: {e}")
+
                         # 修改标题样式
                         for i in range(1, 4):
                             try:
@@ -2785,7 +2840,16 @@ class MdToOfficeConverter(BaseConverter):
                                 heading_font.name = 'Times New Roman'
                                 heading_font.italic = False
                                 heading_font.bold = True
-                            except:
+                                try:
+                                    from docx.oxml.ns import qn
+                                    hrpr = heading_style.element.get_or_add_rPr()
+                                    hrfonts = hrpr.get_or_add_rFonts()
+                                    hrfonts.set(qn('w:eastAsia'), 'SimHei')
+                                    hrfonts.set(qn('w:ascii'), 'Times New Roman')
+                                    hrfonts.set(qn('w:hAnsi'), 'Times New Roman')
+                                except Exception:
+                                    pass
+                            except Exception:
                                 pass
                         
                         # 添加一些示例内容
@@ -3216,7 +3280,7 @@ blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.2em 1em; col
             pandoc_bin = resolve_command("pandoc") or 'pandoc'
             cmd = [pandoc_bin, str(processed_md_file), '--from', 'markdown+smart', '--to', 'html', resource_path_arg]
             # Code block highlighting (pandoc --highlight-style / --no-highlight)
-            cmd.extend(self._highlight_style_args())
+            cmd.extend(self._common_pandoc_args())
             # Math rendering: MathJax for HTML output (DOCX uses native OMML by default)
             cmd.append('--mathjax')
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')

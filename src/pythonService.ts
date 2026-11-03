@@ -136,6 +136,22 @@ export function executePythonScript(
                 args.push('--code-highlight-theme', conversionOptions.codeHighlightTheme);
             }
 
+            if (conversionOptions.enableCrossref) {
+                args.push('--enable-crossref');
+            }
+            if (conversionOptions.enableCiteproc) {
+                args.push('--enable-citeproc');
+            }
+            if (conversionOptions.bibliography) {
+                args.push('--bibliography', conversionOptions.bibliography);
+            }
+            if (conversionOptions.csl) {
+                args.push('--csl', conversionOptions.csl);
+            }
+            if (conversionOptions.bookMode) {
+                args.push('--book');
+            }
+
             if (conversionOptions.popplerPath) {
                 args.push('--poppler-path', conversionOptions.popplerPath);
             }
