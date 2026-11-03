@@ -1583,6 +1583,7 @@ class OfficeToMdConverter(BaseConverter):
                                 cell_parts = []
                                 for p in cell.text_frame.paragraphs:
                                     para_parts = []
+                                    prev_tail = ''
                                     for r in p.runs:
                                         text = r.text
                                         if not text:
@@ -1596,23 +1597,31 @@ class OfficeToMdConverter(BaseConverter):
                                         core = text.strip()
                                         if not core:
                                             para_parts.append(text)
+                                            prev_tail = text[-1:] if text else prev_tail
                                             continue
                                         lead = text[:len(text) - len(text.lstrip())]
                                         trail = text[len(text.rstrip()):]
                                         if mono:
                                             # 代码 span 内不叠加强调（GFM 不渲染 \`**x**\` 的样式）
                                             core = f'`{core}`'
-                                        elif r.bold and r.italic:
+                                        elif r.font.bold and r.font.italic:
                                             core = f'***{core}***'
-                                        elif r.bold:
+                                        elif r.font.bold:
                                             core = f'**{core}**'
-                                        elif r.italic:
+                                        elif r.font.italic:
                                             core = f'*{core}*'
-                                        para_parts.append(lead + core + trail)
-                                    # 空段落不再产生多余的 <br>（此前每个空段落都会塞一个）
+                                        piece = lead + core + trail
+                                        # 相邻的强调/代码标记在 GFM 里会产生解析歧义
+                                        # （如 '*斜体***粗斜***' 会被拆错），用零宽空格断开。
+                                        if prev_tail in ('*', '`') and piece[:1] in ('*', '`'):
+                                            piece = '\u200b' + piece
+                                        prev_tail = piece[-1:] if piece else prev_tail
+                                        para_parts.append(piece)
+                                    # 段落内的 run 直接拼接（同一段落的行内格式不该被拆行）；
+                                    # 段落之间才用 <br> 分隔；空段落不产生多余的 <br>
                                     if para_parts:
-                                        cell_parts.append('<br>'.join(para_parts))
-                                cell_text = ''.join(cell_parts).strip()
+                                        cell_parts.append(''.join(para_parts))
+                                cell_text = '<br>'.join(cell_parts).strip()
                                 cells.append(cell_text)
                             rows_data.append(cells)
                         if rows_data:
