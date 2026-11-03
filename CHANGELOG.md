@@ -11,6 +11,10 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 - The Check Dependencies panel now shows where Python was found (`auto-detected: <path>`).
 
 ### Fixed
+- DOCX template composition was broken on **every** platform: it was gated on pywin32/Word COM although composition only needs pure-Python libs (docxtpl + docxcompose + python-docx), and the compose function referenced undefined bare names (`DocxTemplate`/`Document`/`Composer`/`WD_SECTION_START` — NameError silently swallowed by `except`, always falling back to plain styles). Now gated on `_template_compose_available()`; works without Word on Windows and on macOS/Linux for the first time. Word COM remains an optional nicety (TOC refresh only, with a transparent log line when skipped).
+- `--reproducible` md-to-docx is now truly byte-for-byte reproducible: `docProps/core.xml` `dcterms:created/modified` were left as wall-clock time, so two runs still differed by seconds. Both ZIP entry timestamps and core properties are now normalized via a unified `_finalize_output` pass (idempotent, honors `SOURCE_DATE_EPOCH`); unit test added (`backend/tests/test_reproducible_docx.py`).
+- `--reproducible` version manifest: extension version now read from `package.json` (was always `'unknown'` — the backend is not a pip distribution); pandoc probe uses `resolve_command()` so it no longer falsely reports `not found` on machines where pandoc lives off-PATH; help text no longer overclaims PDF byte-reproducibility.
+- PPTX → Markdown table cells: empty paragraphs no longer emit stray `<br>`; GFM emphasis/code markers wrap only non-whitespace text (leading/trailing spaces moved outside the markers); monospace runs take precedence over bold/italic (code spans cannot carry emphasis); bold+italic now emits `***x***`.
 - Frontend dependency check now maps pip package names to real import names (`python-docx` → `docx`, `PyMuPDF` → `fitz`), in sync with the backend `_INSTALLABLE_HEAVY_LIBS` registry — previously `python-docx` was permanently reported as missing even when installed, blocking MD → DOCX with a misleading "Install Now" loop that could never succeed.
 - The dependency checker now respects the `markdown-hub.pythonPath` setting instead of hard-coding bare `python` / `python3`.
 - Windows Python detection also tries the `py` launcher (a bare `python3` on Windows is usually just the Microsoft Store alias stub).
@@ -20,6 +24,8 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Changed
 - README demo section: placeholder images replaced with text descriptions; the placeholder PNGs and the GIF-recording workflow (`media/RECORDING.md`, `scripts/record-gif.sh`) were removed.
+- `TASK_SPEC.md` (internal task-tracking artifact) removed from main — it belongs on task branches; the roadmap change-log's stale `TBD A1–A10` row replaced with the actual B2/B4 follow-up entry.
+- `.eslintrc.json` added so `npm run lint` actually runs (it previously failed with "ESLint couldn't find a configuration file").
 
 ## [0.3.6] - 2026-07-15
 

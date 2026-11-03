@@ -51,6 +51,16 @@ def get_converter(conversion_type: str, output_dir: str, **kwargs) -> BaseConver
     return converter_class(output_dir, **kwargs)
 
 
+def _extension_version() -> str:
+    """扩展自身版本：打包后 package.json 位于 backend/ 的上一级（扩展根目录）。"""
+    from pathlib import Path
+    pkg = Path(__file__).resolve().parent.parent / 'package.json'
+    try:
+        return json.loads(pkg.read_text(encoding='utf-8')).get('version', 'unknown')
+    except Exception:
+        return 'unknown'
+
+
 def _collect_version_info() -> dict:
     """Collect versions of key dependencies for the --reproducible manifest."""
     import importlib.metadata
@@ -62,14 +72,20 @@ def _collect_version_info() -> dict:
             return 'unknown'
 
     info = {
-        'markdown-hub': _version('markdown-hub'),
+        # 扩展不是 pip 分发（无 pyproject/setup.py），importlib.metadata 查不到；
+        # 真实版本在扩展根目录的 package.json 里。
+        'markdown-hub': _extension_version(),
         'python': platform.python_version(),
         'platform': platform.platform(),
         'pandoc': None,
     }
     try:
+        # 与转换主链路一致：用 resolve_command 定位 pandoc，
+        # 兼容装在 Program Files 等非 PATH 位置的机器（裸 'pandoc' 会误报 not found）
+        from converters.dep_check import resolve_command
+        pandoc_bin = resolve_command('pandoc') or 'pandoc'
         result = subprocess.run(
-            ['pandoc', '--version'], capture_output=True, text=True, timeout=5
+            [pandoc_bin, '--version'], capture_output=True, text=True, timeout=5
         )
         info['pandoc'] = result.stdout.split('\n', 1)[0].strip()
     except Exception:
@@ -113,10 +129,13 @@ def main():
     parser.add_argument('--svg-output-width', type=int, default=800,
                        help='Output width for SVG to PNG (default: 800px)')
     parser.add_argument('--reproducible', action='store_true',
-                       help='Strip timestamps from DOCX/PPTX ZIP entries so output is '
-                            'byte-for-byte reproducible. Also surfaces a version manifest '
-                            'in the output JSON for auditability. '
-                            'Applies to md-to-docx, md-to-pdf, md-to-pptx.')
+                       help='Normalize timestamps (ZIP entries + DOCX core properties) so '
+                            'repeated conversions of the same input are byte-for-byte '
+                            'identical; honors SOURCE_DATE_EPOCH (default 1980-01-01). '
+                            'Also surfaces a version manifest in the output JSON. '
+                            'Applies to md-to-docx and md-to-pptx; md-to-pdf uses the '
+                            'normalized intermediate DOCX, but the final PDF render '
+                            '(Word/LibreOffice/browser) is not byte-reproducible.')
 
     args = parser.parse_args()
 
