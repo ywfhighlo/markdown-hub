@@ -1,7 +1,7 @@
 # Markdown Hub
 
 <!-- BADGES -->
-![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.7-blue)
+![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.6-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.80+-37AAFF)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)

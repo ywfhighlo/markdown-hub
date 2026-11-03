@@ -2,7 +2,7 @@
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
   "description": "The Swiss Army Knife for Markdown conversion — Markdown ↔ DOCX/PDF/HTML/PPTX, Office → Markdown, diagrams → PNG, batch conversion.",
-  "version": "0.3.7",
+  "version": "0.3.6",
   "author": "Yu Wenfeng <909188787@qq.com>",
   "publisher": "ywfhighlo",
   "license": "MIT",
