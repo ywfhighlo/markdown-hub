@@ -197,4 +197,4 @@ Before each release:
 | 2026-09-13 | Phase B: B1 version manifest | ✅ Done (via --reproducible CLI output) |
 | 2026-09-13 | Phase B: B3 font embedding | ⏳ Deferred — requires fonttools + ZIP embedding |
 | 2026-09-13 | Phase C | ⏳ Pending user demand |
-| TBD | A1–A10 | Each item moved to "Done" when merged |
+| 2026-11-03 | B2/B4 follow-up | ✅ Fixed — core.xml timestamps also normalized (ZIP entries alone were not byte-reproducible); unit test added |
