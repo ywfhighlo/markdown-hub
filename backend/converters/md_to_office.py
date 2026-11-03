@@ -2412,6 +2412,14 @@ class MdToOfficeConverter(BaseConverter):
         # 表格列宽优化处理
         content = self._optimize_table_column_widths(content)
 
+        # Phase C: pipe-table [[colspan:N]]/[[rowspan:N]] markers -> pandoc grid_tables
+        # (must run AFTER pipe-width optimize; grid tables are left alone by optimize)
+        try:
+            from .table_merge import rewrite_marked_pipe_tables
+            content = rewrite_marked_pipe_tables(content)
+        except Exception as e:
+            self.logger.warning(f"table merge marker rewrite failed: {e}")
+
         return content, temp_files
     
     def _custom_promote_headings(self, content: str) -> str:
@@ -2745,6 +2753,11 @@ class MdToOfficeConverter(BaseConverter):
 
                 # 3. Update TOC if composition was successful
                 if final_output_path and Path(final_output_path).exists() and final_output_path != str(temp_content_docx):
+                    try:
+                        from .table_merge import repair_docx_vertical_merges
+                        repair_docx_vertical_merges(final_output_path)
+                    except Exception as e:
+                        self.logger.debug(f"table vMerge repair skipped: {e}")
                     self._update_toc(final_output_path)
                     self.logger.info(f"成功转换并应用模板: {input_file} -> {final_output_path}")
                     
@@ -2885,6 +2898,18 @@ class MdToOfficeConverter(BaseConverter):
                 except Exception as e:
                     self.logger.warning(f"注入表格边框失败 (DOCX): {e}")
 
+                try:
+                    from .table_merge import repair_docx_vertical_merges
+                    repair_docx_vertical_merges(str(output_file_path))
+                except Exception as e:
+                    self.logger.debug(f"table vMerge repair skipped: {e}")
+
+                # Refresh TOC when pandoc embedded one (book/--toc) even without a template
+                try:
+                    self._update_toc(str(output_file_path))
+                except Exception as e:
+                    self.logger.debug(f"TOC refresh skipped: {e}")
+
                 self.logger.info(f"成功转换 {input_file} to {output_file_path}")
                 return str(output_file_path)
 
@@ -2896,33 +2921,246 @@ class MdToOfficeConverter(BaseConverter):
             self._cleanup_temp_files(all_temp_files)
 
     def _update_toc(self, docx_path: str):
-        """Updates the Table of Contents in a DOCX file using Word COM object."""
-        _resolve_win32()
-        if _win32com_Dispatch is None:
-            self.logger.info("pywin32/Word 不可用，跳过 TOC 刷新（目录字段保留模板默认值，正文不受影响）")
+        """Refresh TOC: Word COM (preferred on Windows) -> LibreOffice -> static python-docx."""
+        path = str(Path(docx_path).resolve())
+        if not Path(path).exists():
             return
-        
+
+        _resolve_win32()
+        if _win32com_Dispatch is not None:
+            if self._update_toc_via_word_com(path):
+                return
+            self.logger.info("Word COM TOC refresh failed; trying LibreOffice / static fallback")
+        else:
+            self.logger.info("pywin32/Word unavailable; trying LibreOffice / static TOC fallback")
+
+        if self._update_toc_via_libreoffice(path):
+            return
+
+        self._update_toc_via_python_docx(path)
+
+    def _update_toc_via_word_com(self, docx_path: str) -> bool:
+        """Update fields / TablesOfContents via Word COM. Returns True on success."""
         word = None
         try:
-            word = _win32com_Dispatch('Word.Application')
+            word = _win32com_Dispatch("Word.Application")
             doc = word.Documents.Open(str(Path(docx_path).resolve()))
             doc.Fields.Update()
-            if hasattr(doc, 'TablesOfContents'):
+            if hasattr(doc, "TablesOfContents"):
                 for toc in doc.TablesOfContents:
                     toc.Update()
             doc.Save()
-            self.logger.info(f"Updated TOC for {docx_path}")
+            self.logger.info(f"Updated TOC via Word COM for {docx_path}")
+            return True
         except Exception as e:
-            self.logger.error(f"Failed to update TOC for {docx_path}: {e}")
+            self.logger.warning(f"Word COM TOC update failed: {e}")
+            return False
         finally:
             if word:
                 try:
-                    if 'doc' in locals() and doc:
+                    if "doc" in locals() and doc:
                         doc.Close(False)
                     word.Quit()
-                except:
+                except Exception:
                     pass
-    
+
+    def _update_toc_via_libreoffice(self, docx_path: str) -> bool:
+        """Best-effort TOC refresh by round-tripping through LibreOffice (docx->odt->docx).
+
+        LibreOffice recalculates indexes on load/save for many documents. Not as
+        reliable as Word COM, but works headless without Windows.
+        """
+        soffice_bin = resolve_command("soffice")
+        if not soffice_bin:
+            return False
+
+        src = Path(docx_path).resolve()
+        tmp_dir = src.parent / f"_toc_lo_{os.getpid()}"
+        try:
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            # docx -> odt
+            r1 = subprocess.run(
+                [soffice_bin, "--headless", "--convert-to", "odt", "--outdir", str(tmp_dir), str(src)],
+                check=False, capture_output=True, text=True, timeout=120,
+            )
+            odt = tmp_dir / (src.stem + ".odt")
+            if not odt.exists():
+                self.logger.warning(
+                    f"LibreOffice TOC path: odt not produced (rc={r1.returncode})"
+                )
+                return False
+            # odt -> docx
+            r2 = subprocess.run(
+                [soffice_bin, "--headless", "--convert-to", "docx", "--outdir", str(tmp_dir), str(odt)],
+                check=False, capture_output=True, text=True, timeout=120,
+            )
+            out_docx = tmp_dir / (src.stem + ".docx")
+            if not out_docx.exists():
+                self.logger.warning(
+                    f"LibreOffice TOC path: docx not produced (rc={r2.returncode})"
+                )
+                return False
+            shutil.move(str(out_docx), str(src))
+            self.logger.info(f"Updated TOC via LibreOffice round-trip for {docx_path}")
+            return True
+        except Exception as e:
+            self.logger.warning(f"LibreOffice TOC refresh failed: {e}")
+            return False
+        finally:
+            try:
+                if tmp_dir.exists():
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+    def _update_toc_via_python_docx(self, docx_path: str) -> bool:
+        """Static TOC refresh: rebuild TOC 1..N paragraphs from Heading styles.
+
+        Does not evaluate Word fields; replaces visible TOC-styled entries so the
+        outline matches current headings when COM/LibreOffice are unavailable.
+        """
+        try:
+            from docx import Document
+            from docx.oxml.ns import qn
+        except Exception as e:
+            self.logger.info(f"python-docx TOC fallback unavailable: {e}")
+            return False
+
+        try:
+            doc = Document(str(docx_path))
+            headings = []
+            for para in doc.paragraphs:
+                style_name = para.style.name if para.style else ""
+                if style_name.startswith("Heading"):
+                    parts = style_name.split()
+                    try:
+                        level = int(parts[-1])
+                    except (ValueError, IndexError):
+                        level = 1
+                    text = (para.text or "").strip()
+                    if text:
+                        headings.append((level, text))
+
+            if not headings:
+                self.logger.info("python-docx TOC fallback: no Heading styles found")
+                return False
+
+            toc_paras = []
+            for para in doc.paragraphs:
+                style_name = para.style.name if para.style else ""
+                if style_name.startswith("TOC"):
+                    toc_paras.append(para)
+
+            if not toc_paras:
+                # No TOC styles — try to refresh fldSimple / instrText TOC result
+                # by rewriting plain paragraphs after a '目录'/'Table of Contents' title.
+                refreshed = self._refresh_toc_field_result(doc, headings)
+                if refreshed:
+                    doc.save(str(docx_path))
+                    self.logger.info(f"Updated TOC field result via python-docx for {docx_path}")
+                    return True
+                self.logger.info(
+                    "python-docx TOC fallback: no TOC styles/fields to update; leaving document unchanged"
+                )
+                return False
+
+            # Replace TOC paragraph texts round-robin with heading entries
+            for i, para in enumerate(toc_paras):
+                if i < len(headings):
+                    level, text = headings[i]
+                    # Indent visually with non-breaking spaces per level
+                    prefix = "\t" * max(0, level - 1)
+                    # Clear runs and set text
+                    if para.runs:
+                        para.runs[0].text = text
+                        for r in para.runs[1:]:
+                            r.text = ""
+                    else:
+                        para.add_run(text)
+                else:
+                    # Clear extras
+                    if para.runs:
+                        para.runs[0].text = ""
+                        for r in para.runs[1:]:
+                            r.text = ""
+
+            # If more headings than TOC paras, append new paragraphs after last TOC para
+            if len(headings) > len(toc_paras):
+                last = toc_paras[-1]
+                # Best-effort: add paragraphs at doc end with TOC 1 style if available
+                for level, text in headings[len(toc_paras):]:
+                    np = doc.add_paragraph(text)
+                    style_guess = f"TOC {min(level, 3)}"
+                    try:
+                        np.style = style_guess
+                    except Exception:
+                        pass
+
+            doc.save(str(docx_path))
+            self.logger.info(
+                f"Updated TOC via python-docx static rebuild ({len(headings)} headings) for {docx_path}"
+            )
+            return True
+        except Exception as e:
+            self.logger.warning(f"python-docx TOC fallback failed: {e}")
+            return False
+
+    def _refresh_toc_field_result(self, doc, headings) -> bool:
+        """Rewrite text between TOC field separate/end fldChars when present."""
+        from docx.oxml.ns import qn
+
+        body = doc.element.body
+        # Collect paragraphs that are part of a TOC field result
+        # Strategy: find instrText containing 'TOC', then following paragraphs
+        # until fldChar end — replace first N result paragraphs' text.
+        ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        found_toc_instr = False
+        result_paras = []
+        in_result = False
+        for child in body.iterchildren():
+            tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag != "p":
+                continue
+            instrs = child.findall(".//{%s}instrText" % ns["w"])
+            for ins in instrs:
+                if ins.text and "TOC" in ins.text.upper():
+                    found_toc_instr = True
+            flds = child.findall(".//{%s}fldChar" % ns["w"])
+            for f in flds:
+                ftype = f.get(qn("w:fldCharType"))
+                if ftype == "separate" and found_toc_instr:
+                    in_result = True
+                elif ftype == "end" and in_result:
+                    in_result = False
+                    found_toc_instr = False
+            if in_result:
+                # skip the separate paragraph itself if it only has field marks
+                text = "".join(t.text or "" for t in child.findall(".//{%s}t" % ns["w"]))
+                if text.strip() or True:
+                    result_paras.append(child)
+
+        if not result_paras:
+            return False
+
+        # Map oxml p -> python-docx paragraph
+        p_map = {p._p: p for p in doc.paragraphs}
+        applied = 0
+        for i, oxml_p in enumerate(result_paras):
+            para = p_map.get(oxml_p)
+            if para is None:
+                continue
+            if i < len(headings):
+                _level, text = headings[i]
+                if para.runs:
+                    para.runs[0].text = text
+                    for r in para.runs[1:]:
+                        r.text = ""
+                else:
+                    para.add_run(text)
+                applied += 1
+        return applied > 0
+
+
     def _convert_docx_to_pdf(self, docx_path: str, pdf_path: str) -> Optional[str]:
         """Converts a DOCX file to PDF."""
         final_pdf_path = Path(pdf_path)

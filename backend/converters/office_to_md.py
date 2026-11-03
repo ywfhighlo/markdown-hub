@@ -1398,24 +1398,27 @@ class OfficeToMdConverter(BaseConverter):
             return ''.join(parts).strip()
 
         def table_to_md(table):
-            """Convert a Word table to a GFM pipe table.
+            """Convert a Word table to Markdown.
 
-            Handles merged cells: python-docx returns the same cell object
-            multiple times for horizontally-merged cells (each grid column
-            references the same underlying <w:tc>). We dedupe by tc element
-            id, emitting the text once and leaving subsequent columns empty
-            so the markdown table stays well-formed.
+            Plain tables stay GFM pipe (with rich inline formatting).
+            Tables that use gridSpan / vMerge emit pandoc grid_tables so a
+            later MD->DOCX round-trip can restore the merges (Phase C).
             """
+            try:
+                from .table_merge import docx_table_has_merges, docx_table_to_markdown
+                if docx_table_has_merges(table):
+                    return docx_table_to_markdown(table)
+            except Exception as e:
+                self.logger.debug(f"grid_table export fallback to pipe: {e}")
+
             rows = []
             for row in table.rows:
                 cells = []
                 seen_tc_ids = set()
                 for cell in row.cells:
-                    # Dedupe merged cells by their underlying <w:tc> element id
                     tc_id = id(cell._tc)
                     cell_text = cell_to_md(cell)
                     if tc_id in seen_tc_ids:
-                        # This is a continuation of a merged cell — emit empty
                         cells.append('')
                     else:
                         seen_tc_ids.add(tc_id)

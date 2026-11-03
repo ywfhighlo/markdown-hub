@@ -6,6 +6,20 @@ All notable changes to the "Markdown Hub" extension will be documented in this f
 
 ### Added
 
+- Phase C table merges (MD↔DOCX): pipe cells may use `[[colspan:N]]` / `[[rowspan:N]]` markers; preprocess rewrites those tables to pandoc `grid_tables` so Word gets real `gridSpan` / `vMerge`. DOCX→MD emits grid_tables when merges are present (plain tables stay GFM pipe).
+- TOC refresh without Word COM: prefer Word COM on Windows when pywin32 is available; otherwise LibreOffice headless docx↔odt round-trip; otherwise static python-docx rebuild of TOC-styled paragraphs / TOC field results.
+
+### Fixed
+
+- (Phase C) Vertical-merge repair pass after pandoc DOCX write for writers that emit duplicate `vMerge=restart` rows.
+
+### Notes / remaining gaps
+
+- DOCX→MD footnotes and OMML/math reverse still not implemented (left as-is; pandoc-native footnotes on MD→DOCX remain).
+- LibreOffice TOC path is best-effort (depends on LO recalculating indexes on load/save); Word COM remains the most reliable refresher.
+- Nested / diagonal merges and HTML `<table rowspan>` are out of scope — use markers or native grid_tables.
+
+
 - Code block syntax highlighting in DOCX/PDF/HTML output. New setting `markdown-hub.codeHighlightTheme` (pygments, tango, zenburn, ... or off).
 - Math formula rendering in DOCX/PDF/HTML output ($...$, $$...$$, \[...\], \begin{equation}...): native OMML in DOCX, MathJax-compatible spans in HTML — replaces the previous placeholder text
 - HTML → Markdown conversion (right-click any `.html` or `.htm` file)
