@@ -1582,21 +1582,36 @@ class OfficeToMdConverter(BaseConverter):
                                 # Extract rich text (bold/italic/code) from runs, not just cell.text
                                 cell_parts = []
                                 for p in cell.text_frame.paragraphs:
-                                    if cell_parts:
-                                        cell_parts.append('<br>')
+                                    para_parts = []
                                     for r in p.runs:
                                         text = r.text
                                         if not text:
                                             continue
                                         # Escape pipe characters for Markdown tables
                                         text = text.replace('|', '\\|')
-                                        if r.bold and text:
-                                            text = f'**{text}**'
-                                        if r.font.name and ('Mono' in r.font.name or 'Courier' in r.font.name or 'Consolas' in r.font.name):
-                                            text = f'`{text}`'
-                                        elif r.italic and text:
-                                            text = f'*{text}*'
-                                        cell_parts.append(text)
+                                        mono = bool(r.font.name) and any(
+                                            k in r.font.name for k in ('Mono', 'Courier', 'Consolas'))
+                                        # GFM 的强调/代码标记必须包裹非空白文本
+                                        # （'** text **' 不会渲染），因此先剥离首尾空白再包裹。
+                                        core = text.strip()
+                                        if not core:
+                                            para_parts.append(text)
+                                            continue
+                                        lead = text[:len(text) - len(text.lstrip())]
+                                        trail = text[len(text.rstrip()):]
+                                        if mono:
+                                            # 代码 span 内不叠加强调（GFM 不渲染 \`**x**\` 的样式）
+                                            core = f'`{core}`'
+                                        elif r.bold and r.italic:
+                                            core = f'***{core}***'
+                                        elif r.bold:
+                                            core = f'**{core}**'
+                                        elif r.italic:
+                                            core = f'*{core}*'
+                                        para_parts.append(lead + core + trail)
+                                    # 空段落不再产生多余的 <br>（此前每个空段落都会塞一个）
+                                    if para_parts:
+                                        cell_parts.append('<br>'.join(para_parts))
                                 cell_text = ''.join(cell_parts).strip()
                                 cells.append(cell_text)
                             rows_data.append(cells)

@@ -9,7 +9,7 @@ import subprocess
 import platform
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import logging
 
@@ -117,16 +117,17 @@ def _resolve_pptx():
 
 
 def _resolve_win32():
-    """按需加载 Windows COM / docxtpl（DOCX 高级模板）"""
+    """按需加载 DOCX 高级模板所需的库与 Windows COM。
+
+    docxtpl / docxcompose / python-docx 均为纯 Python，跨平台可用；
+    pywin32 仅在 Windows 上加载，且只服务于可选能力（TOC 刷新、Word COM 导 PDF）。
+    """
     global _win32_resolved, _win32com_Dispatch, _WD_SECTION_START, _Composer, _Document, _DocxTemplate
     if _win32_resolved:
         return
     _win32_resolved = True
-    if not _IS_WINDOWS:
-        return
     import importlib
-    if lib_available("pywin32"):
-        _win32com_Dispatch = importlib.import_module("win32com.client").Dispatch
+    # 纯 Python 模板合成依赖：跨平台加载
     if lib_available("python-docx"):
         _Document = importlib.import_module("docx").Document
         try:
@@ -140,6 +141,9 @@ def _resolve_win32():
             pass
     if lib_available("docxtpl"):
         _DocxTemplate = importlib.import_module("docxtpl").DocxTemplate
+    # Windows COM：仅用于可选能力（TOC 刷新、Word 导 PDF）
+    if _IS_WINDOWS and lib_available("pywin32"):
+        _win32com_Dispatch = importlib.import_module("win32com.client").Dispatch
 
 
 def _pptx_available() -> bool:
@@ -150,6 +154,85 @@ def _pptx_available() -> bool:
 def _win32com_available() -> bool:
     _resolve_win32()
     return _win32com_Dispatch is not None
+
+
+def _template_compose_available() -> bool:
+    """DOCX 高级模板合成（渲染封面变量 + docxcompose 合并正文）是否可用。
+
+    只依赖纯 Python 库（docxtpl + docxcompose + python-docx），与 Word/pywin32
+    无关——此前整条模板链路被误门控在 pywin32 上，导致无 Word 的 Windows
+    机器以及 macOS/Linux 上模板完全不生效。
+    """
+    _resolve_win32()
+    return _DocxTemplate is not None and _Composer is not None and _Document is not None
+
+
+# ---------------------------------------------------------------------------
+# --reproducible：把 DOCX 输出中的非确定性来源归一
+# ---------------------------------------------------------------------------
+
+# 默认固定时间戳取 ZIP 格式允许的最小日期 1980-01-01；
+# 遵循 SOURCE_DATE_EPOCH 约定（https://reproducible-builds.org/docs/source-date-epoch/）。
+_REPRO_DEFAULT_EPOCH = 315532800  # 1980-01-01T00:00:00Z
+
+# docProps/core.xml 中生成器写入的"当前时间"字段——
+# 此前 B2/B4 只清了 ZIP 条目时间戳，漏掉了它，导致两次
+# --reproducible 转换的哈希仍然不同（每次差几秒）。
+_CORE_TS_RE = re.compile(
+    rb'(<dcterms:(?:created|modified)\b[^>]*>)([^<]*)(</dcterms:(?:created|modified)>)'
+)
+
+
+def _reproducible_dt() -> datetime:
+    """--reproducible 使用的时间基准：SOURCE_DATE_EPOCH 或 1980-01-01T00:00:00Z。"""
+    epoch = _REPRO_DEFAULT_EPOCH
+    raw = os.environ.get('SOURCE_DATE_EPOCH', '').strip()
+    if raw:
+        try:
+            epoch = int(raw)
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(epoch, tz=timezone.utc)
+
+
+def _make_docx_reproducible(docx_path: str) -> bool:
+    """
+    归一 DOCX 的两类非确定性来源，使重复转换同一输入得到字节级一致的输出：
+      1. 每个 ZIP 条目的文件系统时间戳
+      2. docProps/core.xml 的 dcterms:created / dcterms:modified
+    幂等：对已归一的文件再次调用无副作用。失败时保持原文件不变并返回 False。
+    """
+    import zipfile
+
+    src = Path(docx_path)
+    if not src.exists():
+        return False
+    tmp_path = src.with_suffix(src.suffix + '.repro.tmp')
+    dt = _reproducible_dt()
+    # ZIP 条目时间戳下限为 1980 年
+    zip_dt = (max(dt.year, 1980), dt.month, dt.day, dt.hour, dt.minute, dt.second)
+    iso_ts = dt.strftime('%Y-%m-%dT%H:%M:%SZ').encode('ascii')
+    try:
+        with zipfile.ZipFile(src, 'r') as zin, \
+                zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename == 'docProps/core.xml':
+                    data = _CORE_TS_RE.sub(lambda m: m.group(1) + iso_ts + m.group(3), data)
+                clean = zipfile.ZipInfo(item.filename, date_time=zip_dt)
+                clean.compress_type = item.compress_type
+                clean.comment = item.comment
+                clean.external_attr = item.external_attr
+                zout.writestr(clean, data)
+        shutil.move(str(tmp_path), str(src))
+        return True
+    except Exception:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+        return False
 
 class MdToOfficeConverter(BaseConverter):
     """
@@ -238,6 +321,19 @@ class MdToOfficeConverter(BaseConverter):
         self.logger.info("未找到有效模板，将使用无模板模式")
         return None
 
+    def _finalize_output(self, output_file: str) -> str:
+        """--reproducible 的统一收口：DOCX 在此归一时间戳。
+
+        覆盖所有生成路径（简单参考文档 / 高级模板合成 / 批量）。
+        PPTX 生成路径本身已是确定性的（实测两次转换字节一致），无需处理。
+        """
+        if self.reproducible and self.output_format == 'docx':
+            if _make_docx_reproducible(output_file):
+                self.logger.info(f"已按 --reproducible 归一 DOCX 时间戳: {output_file}")
+            else:
+                self.logger.warning(f"--reproducible 归一失败: {output_file}")
+        return output_file
+
     def convert(self, input_path: str) -> List[str]:
         """
         Main conversion entry point. Handles both single files and directories.
@@ -249,7 +345,7 @@ class MdToOfficeConverter(BaseConverter):
         if os.path.isfile(input_path):
             output_file = self._convert_single_file(input_path)
             if output_file:
-                output_files.append(output_file)
+                output_files.append(self._finalize_output(output_file))
         else:
             md_files = self._get_files_by_extension(input_path, ['.md'])
             total = len(md_files)
@@ -274,7 +370,7 @@ class MdToOfficeConverter(BaseConverter):
 
                 output_file = self._convert_single_file(md_file)
                 if output_file:
-                    output_files.append(output_file)
+                    output_files.append(self._finalize_output(output_file))
 
         # 单文件模式下无输出时，给出明确依赖提示
         if not output_files and os.path.isfile(input_path):
@@ -2555,10 +2651,11 @@ class MdToOfficeConverter(BaseConverter):
                 raise FileNotFoundError("Pandoc not found. Please install pandoc and add it to your system's PATH.")
 
             # Decide whether to use the advanced template feature
+            # （纯 Python 合成，跨平台；Word COM 仅用于可选的 TOC 刷新）
             use_advanced_template = (
                 self.template_path and
                 Path(self.template_path).exists() and
-                _win32com_available()
+                _template_compose_available()
             )
 
             # 记录模板使用状态
@@ -2571,7 +2668,7 @@ class MdToOfficeConverter(BaseConverter):
                 self.logger.info("未配置模板路径，将使用无模板模式")
 
             if use_advanced_template:
-                # --- Advanced Template Path (Windows Only) ---
+                # --- Advanced Template Path (pure-Python compose; TOC refresh is Word-optional) ---
                 self.logger.info(f"使用高级模板功能: {self.template_path}")
                 
                 # 1. Create a temporary content-only DOCX
@@ -2636,8 +2733,8 @@ class MdToOfficeConverter(BaseConverter):
             else:
                 # --- Simple/Cross-Platform Path ---
                 if self.template_path:
-                    if not _win32com_available():
-                        self.logger.warning("检测到非Windows环境，模板功能受限（仅应用样式）。")
+                    if not _template_compose_available():
+                        self.logger.warning("缺少 docxtpl/docxcompose，模板仅作样式参考（reference-doc），封面/文档号不会生效。")
                     self.logger.info(f"使用DOCX模板进行样式转换 (reference-doc): {self.template_path}")
                 else:
                     self.logger.info("未提供DOCX模板，使用Pandoc默认样式")
@@ -2738,6 +2835,7 @@ class MdToOfficeConverter(BaseConverter):
         """Updates the Table of Contents in a DOCX file using Word COM object."""
         _resolve_win32()
         if _win32com_Dispatch is None:
+            self.logger.info("pywin32/Word 不可用，跳过 TOC 刷新（目录字段保留模板默认值，正文不受影响）")
             return
         
         word = None
@@ -3376,8 +3474,8 @@ nav.toc a { color: #24292e; }
         Applies a template by rendering variables and composing it with the content document.
         This uses `DocxTemplate` and `docxcompose`.
         """
-        if not _win32com_available():
-            self.logger.warning("在非Windows系统上无法使用模板功能，将使用简单转换")
+        if not _template_compose_available():
+            self.logger.warning("缺少模板合成依赖（docxtpl/docxcompose/python-docx），模板不生效，使用简单转换")
             return content_path
         
         # Create a deterministic final output path based on the original input file.
@@ -3400,22 +3498,24 @@ nav.toc a { color: #24292e; }
             self.logger.info(f"模板上下文: {context}")
             
             # 使用DocxTemplate渲染模板
-            doc_tpl = DocxTemplate(template_path)
+            doc_tpl = _DocxTemplate(template_path)
             doc_tpl.render(context)
             doc_tpl.save(output_path)
 
             # 加载渲染后的模板文档
-            master = Document(output_path)
+            master = _Document(output_path)
             
             # 创建composer对象
-            composer = Composer(master)
+            composer = _Composer(master)
             
             # 加载内容文档
-            content_doc = Document(content_path)
+            content_doc = _Document(content_path)
             
             # 在模板文档末尾添加连续分节符
-            section = master.add_section()
-            section.start_type = WD_SECTION_START.CONTINUOUS
+            # （WD_SECTION_START 罕见缺失时跳过——add_section 默认即连续节，不影响合并）
+            if _WD_SECTION_START is not None:
+                section = master.add_section()
+                section.start_type = _WD_SECTION_START.CONTINUOUS
             
             # 合并文档，保留样式
             composer.append(content_doc)
