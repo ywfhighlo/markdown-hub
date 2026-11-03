@@ -331,13 +331,20 @@ class MdToOfficeConverter(BaseConverter):
             # 导致 LibreOffice 把表格单元格错误关联到列表样式、内容溢出表格的问题
             self._inject_missing_paragraph_styles(docx_path)
 
-            # 3. 将临时DOCX转换为最终的PDF（需要 Word COM 或 LibreOffice）
+            # 3. 将临时DOCX转换为最终的PDF（Word COM → LibreOffice → 无头浏览器兜底）
             pdf_path_result = self._convert_docx_to_pdf(docx_path, final_pdf_path)
+            if not pdf_path_result:
+                # 零安装兜底：Word 和 LibreOffice 都不可用时，用本机已有的
+                # Chromium 系浏览器（Edge/Chrome）无头打印。复用同一个中间 DOCX
+                # （图表已预处理、表格边框已注入），内容与 Word 路径一致。
+                self.logger.info("Word/LibreOffice 不可用，尝试无头浏览器渲染 PDF ...")
+                pdf_path_result = self._convert_docx_to_pdf_via_browser(docx_path, final_pdf_path)
             if not pdf_path_result:
                 self._last_failure_reason = (
                     "缺少 PDF 转换工具。需要以下之一：\n"
-                    "  - Microsoft Word（Windows 系统自带）\n"
-                    "  - LibreOffice：https://www.libreoffice.org/download/"
+                    "  - Microsoft Word（若本机已安装；注意 Windows 并不自带 Word）\n"
+                    "  - LibreOffice：https://www.libreoffice.org/download/\n"
+                    "  - 任意 Chromium 系浏览器（Edge/Chrome）——已安装则自动用于无头打印，无需额外安装"
                 )
             
             # 4. 清理临时的DOCX文件
@@ -2801,6 +2808,142 @@ class MdToOfficeConverter(BaseConverter):
 
         self.logger.error("No suitable tool (Word/LibreOffice) found for PDF conversion.")
         return None
+
+    def _find_headless_browser(self) -> Optional[str]:
+        """
+        定位本机可用的 Chromium 系浏览器（Edge/Chrome），用于无头打印 PDF。
+        这类浏览器几乎每台机器都有，因此 Word 和 LibreOffice 都缺失时
+        也能零额外安装地生成 PDF。
+        """
+        if platform.system() == "Windows":
+            local = os.environ.get("LOCALAPPDATA", "")
+            pf = os.environ.get("ProgramFiles", "")
+            pf86 = os.environ.get("ProgramFiles(x86)", "")
+            candidates = [
+                rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+                rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+                rf"{local}\Google\Chrome\Application\chrome.exe",
+                rf"{pf}\Google\Chrome\Application\chrome.exe",
+                rf"{pf86}\Google\Chrome\Application\chrome.exe",
+            ]
+        elif platform.system() == "Darwin":
+            candidates = [
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ]
+        else:
+            candidates = [
+                "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium", "/usr/bin/chromium-browser",
+                "/usr/bin/microsoft-edge",
+            ]
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return candidate
+        # 最后尝试 PATH（scoop/choco/homebrew 等非标准位置）
+        for name in ("msedge", "chrome", "chromium", "google-chrome"):
+            found = resolve_command(name)
+            if found:
+                return found
+        return None
+
+    # 无头浏览器打印 PDF 的页面样式，经 pandoc --include-in-header 注入
+    _BROWSER_PRINT_CSS = """<style>
+@page { size: A4; margin: 20mm 16mm; }
+html { -webkit-print-color-adjust: exact; }
+body { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif;
+       font-size: 11pt; line-height: 1.6; color: #222; }
+h1, h2, h3, h4 { line-height: 1.3; margin: 1.2em 0 0.6em; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 10pt; }
+th, td { border: 1px solid #888; padding: 5px 8px; text-align: left; }
+th { background: #f2f2f2; }
+code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt;
+       background: #f4f4f4; padding: 1px 3px; border-radius: 3px; }
+pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }
+pre code { background: none; padding: 0; }
+img, svg { max-width: 100%; height: auto; }
+blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.2em 1em; color: #555; }
+</style>
+"""
+
+    def _convert_docx_to_pdf_via_browser(self, docx_path: str, pdf_path: str) -> Optional[str]:
+        """
+        零安装兜底：DOCX --pandoc--> 自包含 HTML --Edge/Chrome 无头打印--> PDF。
+        在 Word 与 LibreOffice 都不可用时由 PDF 主流程调用；复用上游已处理好的
+        中间 DOCX（图表已转 PNG、表格边框已注入），因此内容与 Word 路径一致。
+        """
+        browser = self._find_headless_browser()
+        if not browser:
+            self.logger.warning("未找到 Chromium 系浏览器（Edge/Chrome），无头打印兜底不可用")
+            return None
+        if not command_available("pandoc"):
+            return None
+
+        import tempfile
+
+        final_pdf_path = Path(pdf_path)
+        header_file = Path(tempfile.gettempdir()) / f"mh_print_css_{os.getpid()}.html"
+        html_path = final_pdf_path.with_suffix(".print.html")
+        user_data_dir = ""
+        try:
+            header_file.write_text(self._BROWSER_PRINT_CSS, encoding="utf-8")
+
+            # DOCX → 自包含 HTML（图片内联为 data URI，打印时无外部依赖）
+            # 不传 --metadata title：避免 pandoc 生成标题块（Markdown 自带 # 标题，
+            # 且中间 DOCX 是临时文件名，会被误当作标题打印出来）
+            cmd = [
+                resolve_command("pandoc") or "pandoc", str(docx_path),
+                "-o", str(html_path),
+                "--standalone", "--embed-resources", "--quiet",
+                "--include-in-header", str(header_file),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+            if not html_path.exists():
+                self.logger.error("pandoc 未生成中间 HTML，无头打印兜底失败")
+                return None
+
+            # Chrome/Edge 无头打印；先试新 headless 参数，失败退回旧参数
+            user_data_dir = tempfile.mkdtemp(prefix="mh-browser-print-")
+            attempts = [
+                ["--headless=new", "--no-pdf-header-footer"],
+                ["--headless", "--print-to-pdf-no-header"],
+            ]
+            for extra_args in attempts:
+                if final_pdf_path.exists():
+                    final_pdf_path.unlink()
+                print_cmd = [
+                    browser, *extra_args,
+                    "--disable-gpu",
+                    f"--user-data-dir={user_data_dir}",
+                    "--run-all-compositor-stages-before-draw",
+                    "--virtual-time-budget=15000",
+                    f"--print-to-pdf={final_pdf_path}",
+                    html_path.as_uri(),
+                ]
+                try:
+                    subprocess.run(print_cmd, capture_output=True, timeout=180)
+                except subprocess.TimeoutExpired:
+                    self.logger.warning("无头浏览器打印超时，尝试下一种参数组合")
+                    continue
+                if final_pdf_path.exists() and final_pdf_path.stat().st_size > 500:
+                    self.logger.info(f"Successfully created PDF with headless browser ({browser}): {final_pdf_path}")
+                    return str(final_pdf_path)
+
+            self.logger.error(f"Headless browser PDF conversion failed: {browser}")
+            return None
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.error(f"Browser PDF conversion failed: {e.stderr if hasattr(e, 'stderr') else e}")
+            return None
+        finally:
+            for p in (html_path, header_file):
+                try:
+                    if p.exists():
+                        p.unlink()
+                except OSError:
+                    pass
+            if user_data_dir:
+                shutil.rmtree(user_data_dir, ignore_errors=True)
 
     def _inject_table_borders(self, docx_path: str) -> None:
         """

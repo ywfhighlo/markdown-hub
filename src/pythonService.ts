@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { execSync } from 'child_process';
+import { resolvePythonCommand } from './pythonLocator';
 
 type ConversionType = 'md-to-docx' | 'md-to-pdf' | 'md-to-html' | 'md-to-pptx' | 'md-to-epub' | 'md-svg-to-docx' | 'office-to-md' | 'diagram-to-png' | 'html-to-md';
 
@@ -60,21 +60,8 @@ function getStageLabel(stage: string): string {
     return STAGE_LABELS[stage] || stage;
 }
 
-function detectPythonCommand(): string {
-    const candidates = ['python3', 'python'];
-
-    for (const candidate of candidates) {
-        try {
-            execSync(`${candidate} --version`, { stdio: 'ignore' });
-            return candidate;
-        } catch (error) {
-            continue;
-        }
-    }
-
-    const isWindows = process.platform === 'win32';
-    return isWindows ? 'python' : 'python3';
-}
+/** Whether the "Python auto-detected via scan" hint was already shown this session. */
+let scanHintShown = false;
 
 export function executePythonScript(
     sourcePath: string,
@@ -91,7 +78,26 @@ export function executePythonScript(
         const config = vscode.workspace.getConfiguration('markdown-hub');
         const configuredPythonPath = config.get<string>('pythonPath');
 
-        const pythonPath = configuredPythonPath || detectPythonCommand();
+        // Resolution order: setting → PATH → py launcher → common install
+        // locations (see pythonLocator.ts). Auto-detected-scan results get a
+        // one-time hint so the user can pin them via `markdown-hub.pythonPath`.
+        const resolved = configuredPythonPath ? undefined : resolvePythonCommand();
+        const pythonPath = configuredPythonPath || resolved?.cmd
+            || (process.platform === 'win32' ? 'python' : 'python3');
+
+        if (resolved?.source === 'scan' && !scanHintShown) {
+            scanHintShown = true;
+            vscode.window.showInformationMessage(
+                `Markdown Hub: Python ${resolved.version ?? ''} found at "${resolved.cmd}" (it is not on PATH). ` +
+                'You can pin it as the Python used by Markdown Hub.',
+                'Set pythonPath'
+            ).then(sel => {
+                if (sel === 'Set pythonPath') {
+                    vscode.workspace.getConfiguration('markdown-hub')
+                        .update('pythonPath', resolved.cmd, vscode.ConfigurationTarget.Global);
+                }
+            });
+        }
 
         const args = [
             scriptPath,

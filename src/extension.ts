@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { handleConvertCommand, handleOpenTemplateSettingsCommand, handleViewHistoryCommand, handleClearHistoryCommand, handleCheckDependenciesCommand } from './commandHandler';
+import { resolvePythonCommand } from './pythonLocator';
 
 // Batch conversion handler - reuses existing conversion logic
 async function handleBatchConvert(uri: vscode.Uri, fileType: string, context: vscode.ExtensionContext) {
@@ -38,9 +39,9 @@ async function handleBatchPdfToPng(uri: vscode.Uri, context: vscode.ExtensionCon
     const scriptPath = path.join(context.extensionPath, 'backend', 'converters', 'batch_pdf_to_png.py');
     const targetDir = uri.fsPath;
 
-    // Get the configured python path
-    const config = vscode.workspace.getConfiguration('markdownHub');
-    const pythonPath = config.get<string>('pythonPath') || 'python';
+    // Get the configured python path (falls back to auto-detection — see pythonLocator.ts)
+    const config = vscode.workspace.getConfiguration('markdown-hub');
+    const pythonPath = config.get<string>('pythonPath') || resolvePythonCommand()?.cmd || 'python';
 
     // Get the configured poppler path
     let popplerPath = config.get<string>('popplerPath') || '';

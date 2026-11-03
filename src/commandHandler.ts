@@ -334,15 +334,22 @@ export async function handleConvertCommand(
     const depCheck = await precheckConversion(conversionType);
     if (depCheck) {
         if (!depCheck.installCommand && depCheck.featureName === 'Python') {
-            // Python itself is missing
-            vscode.window.showErrorMessage(
-                'Python is not installed. Markdown Hub requires Python 3.8+.',
+            // Python itself is missing. Give the two fixes users actually need:
+            // a copyable `markdown-hub.pythonPath` example, and one-click to the setting.
+            const example = process.platform === 'win32'
+                ? 'C:\\Users\\<you>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+                : '/usr/bin/python3';
+            const selection = await vscode.window.showErrorMessage(
+                `Python 3.8+ not found. Install Python, or — if it is already installed — ` +
+                `set "markdown-hub.pythonPath" in Settings to its full path, e.g. ${example}`,
+                'Open Settings',
                 'Download Python'
-            ).then(sel => {
-                if (sel === 'Download Python') {
-                    vscode.env.openExternal(vscode.Uri.parse('https://www.python.org/downloads/'));
-                }
-            });
+            );
+            if (selection === 'Open Settings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', 'markdown-hub.pythonPath');
+            } else if (selection === 'Download Python') {
+                vscode.env.openExternal(vscode.Uri.parse('https://www.python.org/downloads/'));
+            }
             return;
         }
 

@@ -1,10 +1,11 @@
 # Markdown Hub
 
 <!-- BADGES -->
-![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.6-blue)
+
+![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.7-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.80+-37AAFF)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![VS Code Engine](<https://img.shields.io/badge/VS%20Code-1.80+-37AAFF>)
+![Platform](<https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey>)
 
 **Markdown 文档转换的瑞士军刀。**
 支持 Markdown 与 DOCX / PDF / HTML / PPTX 互转，Office → Markdown，图表转 PNG，批量转换，自定义模板等——全部通过 VS Code 右键菜单完成。
@@ -16,6 +17,7 @@
 ## ✨ 功能特性
 
 ### Markdown → Office
+
 - **Markdown → DOCX**（支持自定义模板）
 - **Markdown → PDF**（通过 Word / LibreOffice）
 - **Markdown → HTML**（GitHub 风格 CSS，自动目录）
@@ -23,15 +25,18 @@
 - SVG / Mermaid / PlantUML / Draw.io 代码块自动转为 PNG
 
 ### Office → Markdown
+
 - **DOCX → Markdown**
 - **XLSX → Markdown**（感知多 sheet，自动转义 `|`）
 - **PDF → Markdown**（PyMuPDF 文本提取 + 扫描件 OCR 回退）
 - **PPTX → Markdown**
 
 ### 图表 → PNG
+
 - SVG / Mermaid / PlantUML / Draw.io → 高质量 PNG（Batik + mmdc）
 
 ### 批量转换
+
 - 一键将整个目录的 Markdown 文件批量转为 DOCX / PDF / HTML / PPTX
 - 一键将目录中的 PDF / DOCX / PPTX / XLSX 文件批量转为 Markdown
 
@@ -39,15 +44,15 @@
 
 ## 📊 为什么选择 Markdown Hub？
 
-| 功能 | Markdown Hub | vscode-pandoc | MarkItDown | Markdown Preview Enhanced |
-|---------|:---:|:---:|:---:|:---:|
-| Markdown → DOCX/PDF/HTML/PPTX | ✅ | ✅（部分）| ❌ | ✅（通过 pandoc）|
-| Office → Markdown（反向）| ✅ | ❌ | ✅ | ❌ |
-| **双向转换** | ✅ | ❌ | ❌（单向）| ❌ |
-| **批量转换** | ✅ | ❌ | ❌ | ❌ |
-| **图表 → PNG** | ✅ | ❌ | ❌ | 部分 |
-| **自定义模板** | ✅ | ❌ | ❌ | ❌ |
-| PDF OCR 回退 | ✅ | ❌ | ❌ | ❌ |
+| 功能                           | Markdown Hub | vscode-pandoc | MarkItDown | Markdown Preview Enhanced |
+| ------------------------------ | :----------: | :-----------: | :--------: | :-----------------------: |
+| Markdown → DOCX/PDF/HTML/PPTX |      ✅      |  ✅（部分）  |     ❌     |     ✅（通过 pandoc）     |
+| Office → Markdown（反向）     |      ✅      |      ❌      |     ✅     |            ❌            |
+| **双向转换**             |      ✅      |      ❌      | ❌（单向） |            ❌            |
+| **批量转换**             |      ✅      |      ❌      |     ❌     |            ❌            |
+| **图表 → PNG**          |      ✅      |      ❌      |     ❌     |           部分           |
+| **自定义模板**           |      ✅      |      ❌      |     ❌     |            ❌            |
+| PDF OCR 回退                   |      ✅      |      ❌      |     ❌     |            ❌            |
 
 **Markdown Hub 是唯一一个同时覆盖双向转换、批量处理、图表渲染和自定义模板的扩展。**
 
@@ -55,19 +60,14 @@
 
 ## 📸 实际效果
 
-> 占位演示 —— 运行 `scripts/record-gif.sh media/<name> <duration>` 即可替换（Windows 推荐用 [ScreenToGif](https://www.screentogif.com/)）。完整流程见 `media/RECORDING.md`。
-
 **右键 Markdown 即可转换为 DOCX：**
-
-![Markdown → DOCX 演示](media/placeholder-md-to-docx.png)
+在资源管理器中右键任意 `.md` 文件 → **Convert to DOCX**。通知栏实时显示各阶段进度（解析 → 转换 → 生成），完成后在配置的输出目录得到带标题样式、表格边框、代码高亮和模板封面的 `.docx` 文件。
 
 **批量转换一个目录中的所有 Markdown 文件：**
-
-![批量转换演示](media/placeholder-batch.png)
+右键文件夹 → **Batch: Markdown → DOCX / PDF / HTML / PPTX / EPUB**。输出面板逐个流式显示转换进度，结束时给出汇总——成功 N 个、失败 M 个，并附上每个失败文件的具体原因。
 
 **Markdown → PPTX（带正确的标题、列表、表格、代码块）：**
-
-![Markdown → PPTX 演示](media/placeholder-pptx.png)
+`#`/`##`/`###` 映射为不同级别的标题版式，粗体、斜体、行内 `代码` 保持原格式，GFM 表格转为真正的 PowerPoint 表格，代码块渲染为全宽深色背景，列表与引用块保持结构——不会把原始 Markdown 文本直接甩到幻灯片上。
 
 ---
 
@@ -88,23 +88,26 @@
 Markdown Hub 使用 Python 执行转换逻辑。请安装 Python 3.8+ 以及你需要的依赖（各功能相互独立——只装你用得到的即可）。
 
 ### 最小安装（仅 PDF → Markdown）
+
 ```bash
 pip install PyMuPDF
 ```
 
 ### 按功能安装
-| 功能 | 安装命令 |
-|---------|---------|
-| Word(.docx) → Markdown | `pip install docx2txt` |
-| Excel → Markdown | `pip install pandas tabulate openpyxl` |
-| PPTX → Markdown | `pip install python-pptx` |
-| Markdown → DOCX | `pip install python-docx docxtpl docxcompose docx2txt` |
-| Markdown → PDF | `pip install markdown` + [Pandoc](https://pandoc.org/installing.html) + Word/LibreOffice |
-| Markdown → HTML | `pip install markdown` |
-| Markdown → PPTX | `pip install python-pptx Pillow` |
-| 图表 → PNG | `pip install Pillow` |
+
+| 功能                    | 安装命令                                                                                  |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| Word(.docx) → Markdown | `pip install docx2txt`                                                                  |
+| Excel → Markdown       | `pip install pandas tabulate openpyxl`                                                  |
+| PPTX → Markdown        | `pip install python-pptx`                                                               |
+| Markdown → DOCX        | `pip install python-docx docxtpl docxcompose docx2txt`                                  |
+| Markdown → PDF         | `pip install markdown` + [Pandoc](https://pandoc.org/installing.html) + Word/LibreOffice |
+| Markdown → HTML        | `pip install markdown`                                                                  |
+| Markdown → PPTX        | `pip install python-pptx Pillow`                                                        |
+| 图表 → PNG             | `pip install Pillow`                                                                    |
 
 ### 系统工具（可选，按功能需要）
+
 - **[Pandoc](https://pandoc.org/installing.html)** —— Markdown → DOCX / PDF / HTML 必需
 - **Microsoft Word**（Windows）或 **LibreOffice**（macOS/Linux）—— 用于 DOCX 模板渲染和 PDF 导出
 - **[Tesseract OCR](https://github.com/tesseract-ocr/tesseract)** —— 用于扫描版 PDF → Markdown
@@ -120,15 +123,15 @@ pip install PyMuPDF
 
 在 VS Code 设置中搜索 `markdown-hub`。主要选项：
 
-| 配置项 | 说明 | 默认值 |
-|---------|-------------|---------|
-| `markdown-hub.outputDirectory` | 转换后文件的输出目录 | `./converted_markdown_files` |
-| `markdown-hub.pythonPath` | Python 解释器路径（留空则自动检测）| `""` |
-| `markdown-hub.useDocxTemplate` | 是否启用 DOCX 模板 | `true` |
-| `markdown-hub.docxTemplatePath` | 自定义 `.docx` 模板路径 | `""` |
-| `markdown-hub.promoteHeadings` | 标题级别自动提升一级（封面页式写作）| `true` |
-| `markdown-hub.codeHighlightTheme` | 代码块高亮主题（pygments/tango/.../off）| `pygments` |
-| `markdown-hub.svgDpi` | SVG 转 PNG 的 DPI | `300` |
+| 配置项                              | 说明                                     | 默认值                         |
+| ----------------------------------- | ---------------------------------------- | ------------------------------ |
+| `markdown-hub.outputDirectory`    | 转换后文件的输出目录                     | `./converted_markdown_files` |
+| `markdown-hub.pythonPath`         | Python 解释器路径（留空则自动检测）      | `""`                         |
+| `markdown-hub.useDocxTemplate`    | 是否启用 DOCX 模板                       | `true`                       |
+| `markdown-hub.docxTemplatePath`   | 自定义 `.docx` 模板路径                | `""`                         |
+| `markdown-hub.promoteHeadings`    | 标题级别自动提升一级（封面页式写作）     | `true`                       |
+| `markdown-hub.codeHighlightTheme` | 代码块高亮主题（pygments/tango/.../off） | `pygments`                   |
+| `markdown-hub.svgDpi`             | SVG 转 PNG 的 DPI                        | `300`                        |
 
 完整配置：打开 VS Code 设置，搜索 `markdown-hub`。
 

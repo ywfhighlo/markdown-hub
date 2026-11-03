@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import * as vscode from 'vscode';
+import { q, resolvePythonCommand } from './pythonLocator';
 
 // ─────────────────────────────────────────
 // Per-feature dependency matrix
@@ -20,6 +21,8 @@ export interface FeatureDependency {
 export interface DependencyStatus {
     python: boolean;
     pythonVersion?: string;
+    pythonCmd?: string;         // Resolved Python command (setting value or detected candidate)
+    pythonSource?: 'setting' | 'PATH' | 'py-launcher' | 'scan';
     features: Record<string, FeatureDependency>;
 }
 
@@ -164,27 +167,32 @@ function checkCommandExists(command: string, versionFlag: string = '--version'):
     }
 }
 
-function getCommandVersion(command: string, versionFlag: string = '--version'): string | undefined {
-    try {
-        const output = execSync(`${command} ${versionFlag}`, { encoding: 'utf8', timeout: 10000 });
-        return output.trim().split('\n')[0];
-    } catch {
-        return undefined;
-    }
-}
+/**
+ * pip 包名 → 真实 import 名。与 backend/converters/dep_check.py 的
+ * _INSTALLABLE_HEAVY_LIBS 保持同步。多数包两者相同，但这些常用的包不同——
+ * 按 pip 名机械推导（'python-docx' → `import python_docx`）会永远误报缺失，
+ * 且提示 "Install Now" 重装也无济于事。
+ */
+const LIB_IMPORT_NAMES: Record<string, string> = {
+    'PyMuPDF': 'fitz',
+    'python-docx': 'docx',
+    'python-pptx': 'pptx',
+    'Pillow': 'PIL',
+};
 
 function checkPythonLib(pythonCmd: string, libName: string): boolean {
+    const importName = LIB_IMPORT_NAMES[libName] || libName.replace('-', '_');
     try {
-        execSync(`${pythonCmd} -c "import ${libName.replace('-', '_')}"`, { stdio: 'ignore' });
+        execSync(`${q(pythonCmd)} -c "import ${importName}"`, { stdio: 'ignore' });
         return true;
     } catch {
         return false;
     }
 }
 
-/** Build a platform-appropriate `pip install` command. */
-function pipInstallCmd(libs: string[]): string {
-    return `pip install ${libs.join(' ')}`;
+/** Build a `pip install` command that works even when `pip` itself is not on PATH. */
+function pipInstallCmd(pythonCmd: string, libs: string[]): string {
+    return `${q(pythonCmd)} -m pip install ${libs.join(' ')}`;
 }
 
 // ─────────────────────────────────────────
@@ -192,8 +200,11 @@ function pipInstallCmd(libs: string[]): string {
 // ─────────────────────────────────────────
 
 export async function checkDependencies(): Promise<DependencyStatus> {
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    const pythonAvailable = checkCommandExists(pythonCmd);
+    // Resolution order: setting → PATH → py launcher → common install locations.
+    // See pythonLocator.ts; the scan makes "installed but not on PATH" work.
+    const resolved = resolvePythonCommand();
+    const pythonCmd = resolved?.cmd ?? (process.platform === 'win32' ? 'python' : 'python3');
+    const pythonAvailable = !!resolved;
 
     const features: Record<string, FeatureDependency> = {};
 
@@ -210,7 +221,7 @@ export async function checkDependencies(): Promise<DependencyStatus> {
             missingLibs,
             missingCmds,
             installHint: [
-                ...(missingLibs.length > 0 ? [pipInstallCmd(missingLibs)] : []),
+                ...(missingLibs.length > 0 ? [pipInstallCmd(pythonCmd, missingLibs)] : []),
                 ...(missingCmds.length > 0 ? [missingCmds.map(cmd => installHintFor(cmd)).join(', ')] : []),
             ].join(' && ') || undefined,
         };
@@ -218,7 +229,9 @@ export async function checkDependencies(): Promise<DependencyStatus> {
 
     return {
         python: pythonAvailable,
-        pythonVersion: pythonAvailable ? getCommandVersion(pythonCmd, '--version') : undefined,
+        pythonVersion: resolved?.version,
+        pythonCmd,
+        pythonSource: resolved?.source,
         features,
     };
 }
@@ -234,13 +247,14 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
 
     // Python itself
     if (status.python) {
-        okItems.push(`✅ Python: ${status.pythonVersion}`);
+        const via = status.pythonSource === 'scan' ? ` (auto-detected: ${status.pythonCmd})` : '';
+        okItems.push(`✅ Python: ${status.pythonVersion}${via}`);
     } else {
         issues.push({
             name: 'Python',
             severity: 'error',
             installCommand: 'https://www.python.org/downloads/',
-            description: 'Python is not installed — all features are unavailable'
+            description: 'Python 3.8+ not found — install it, or set "markdown-hub.pythonPath" to an existing python executable'
         });
     }
 
@@ -342,7 +356,7 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
         const cmd = labelToInstall[label];
         if (cmd) {
             // Check if it's a pip command (can auto-run) vs a URL (open in browser)
-            if (cmd.startsWith('pip ') || cmd.startsWith('pip3 ')) {
+            if (cmd.startsWith('pip ') || cmd.startsWith('pip3 ') || cmd.includes('-m pip ')) {
                 const terminal = vscode.window.createTerminal('Markdown Hub — Installing');
                 terminal.show();
                 terminal.sendText(cmd);
@@ -353,7 +367,7 @@ export async function checkDependenciesWithQuickPick(): Promise<void> {
                 vscode.env.openExternal(vscode.Uri.parse(cmd));
             } else {
                 // Mixed command (pip + URL) — open terminal for pip part
-                const pipPart = cmd.split('&&').find(p => p.trim().startsWith('pip'));
+                const pipPart = cmd.split('&&').find(p => p.trim().startsWith('pip') || p.includes('-m pip '));
                 if (pipPart) {
                     const terminal = vscode.window.createTerminal('Markdown Hub — Installing');
                     terminal.show();
@@ -411,7 +425,7 @@ export async function precheckConversion(
 
     const installParts: string[] = [];
     if (uniqueLibs.length > 0) {
-        installParts.push(pipInstallCmd(uniqueLibs));
+        installParts.push(pipInstallCmd(status.pythonCmd || 'python', uniqueLibs));
     }
     if (uniqueCmds.length > 0) {
         installParts.push(uniqueCmds.map(cmd => installHintFor(cmd)).join('; '));

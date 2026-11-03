@@ -10,6 +10,7 @@ svg_temp/
 # Source code and test files that are compiled
 src/
 test/
+tests/
 
 # Python specific ignores
 .venv/

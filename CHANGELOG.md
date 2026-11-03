@@ -2,6 +2,25 @@
 
 All notable changes to the "Markdown Hub" extension will be documented in this file.
 
+## [0.3.7] - 2026-11-03
+
+### Added
+- Python auto-discovery (`src/pythonLocator.ts`): when Python is installed but not on PATH — the single most common Windows setup failure — the extension now scans common install locations (python.org per-user/all-users, conda, Microsoft Store, `py` launcher), verifies `--version` ≥ 3.8, and uses the first hit. Conversions work out of the box, and a one-time hint shows the detected path with a "Set pythonPath" quick action to pin it.
+- MD → PDF zero-install fallback: when neither Word nor LibreOffice is available, the intermediate DOCX (already diagram-preprocessed and border-injected) is rendered to PDF via a headless Chromium-family browser (Edge/Chrome) — no extra installation required. A4 print CSS with CJK fonts, table borders, and code styling is injected automatically.
+- "Python not found" error now includes a copyable `markdown-hub.pythonPath` example (e.g. `C:\Users\<you>\AppData\Local\Programs\Python\Python312\python.exe`) plus **Open Settings** / **Download Python** actions.
+- The Check Dependencies panel now shows where Python was found (`auto-detected: <path>`).
+
+### Fixed
+- Frontend dependency check now maps pip package names to real import names (`python-docx` → `docx`, `PyMuPDF` → `fitz`), in sync with the backend `_INSTALLABLE_HEAVY_LIBS` registry — previously `python-docx` was permanently reported as missing even when installed, blocking MD → DOCX with a misleading "Install Now" loop that could never succeed.
+- The dependency checker now respects the `markdown-hub.pythonPath` setting instead of hard-coding bare `python` / `python3`.
+- Windows Python detection also tries the `py` launcher (a bare `python3` on Windows is usually just the Microsoft Store alias stub).
+- Batch PDF → PNG read the wrong configuration section (`markdownHub` instead of `markdown-hub`), so the `pythonPath` / `popplerPath` settings were silently ignored.
+- Dependency install commands now run via `<python> -m pip install …` so they work even when `pip` itself is not on PATH.
+- Misleading "Microsoft Word (bundled with Windows)" claim in the PDF-conversion error corrected — Windows does not bundle Word; the message now also mentions the headless-browser option.
+
+### Changed
+- README demo section: placeholder images replaced with text descriptions; the placeholder PNGs and the GIF-recording workflow (`media/RECORDING.md`, `scripts/record-gif.sh`) were removed.
+
 ## [0.3.6] - 2026-07-15
 
 ### Added
