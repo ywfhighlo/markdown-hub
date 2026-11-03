@@ -180,6 +180,10 @@ class MdToOfficeConverter(BaseConverter):
 
         # PPTX SVG 转换模式配置 - 使用默认值
         self.pptx_svg_mode = 'full'
+
+        # B5: reproducible output — strips filesystem timestamps from DOCX ZIP entries
+        # so repeated conversions of the same input are byte-for-byte identical.
+        self.reproducible = kwargs.get('reproducible', False)
         
         # 模板路径处理：优先使用前端提供的路径，如果无效则回退到默认模板
         self.template_path = None
@@ -327,13 +331,20 @@ class MdToOfficeConverter(BaseConverter):
             # 导致 LibreOffice 把表格单元格错误关联到列表样式、内容溢出表格的问题
             self._inject_missing_paragraph_styles(docx_path)
 
-            # 3. 将临时DOCX转换为最终的PDF（需要 Word COM 或 LibreOffice）
+            # 3. 将临时DOCX转换为最终的PDF（Word COM → LibreOffice → 无头浏览器兜底）
             pdf_path_result = self._convert_docx_to_pdf(docx_path, final_pdf_path)
+            if not pdf_path_result:
+                # 零安装兜底：Word 和 LibreOffice 都不可用时，用本机已有的
+                # Chromium 系浏览器（Edge/Chrome）无头打印。复用同一个中间 DOCX
+                # （图表已预处理、表格边框已注入），内容与 Word 路径一致。
+                self.logger.info("Word/LibreOffice 不可用，尝试无头浏览器渲染 PDF ...")
+                pdf_path_result = self._convert_docx_to_pdf_via_browser(docx_path, final_pdf_path)
             if not pdf_path_result:
                 self._last_failure_reason = (
                     "缺少 PDF 转换工具。需要以下之一：\n"
-                    "  - Microsoft Word（Windows 系统自带）\n"
-                    "  - LibreOffice：https://www.libreoffice.org/download/"
+                    "  - Microsoft Word（若本机已安装；注意 Windows 并不自带 Word）\n"
+                    "  - LibreOffice：https://www.libreoffice.org/download/\n"
+                    "  - 任意 Chromium 系浏览器（Edge/Chrome）——已安装则自动用于无头打印，无需额外安装"
                 )
             
             # 4. 清理临时的DOCX文件
@@ -837,14 +848,18 @@ class MdToOfficeConverter(BaseConverter):
             for li in elem.findall('li'):
                 runs = self._walk_html(li)
                 runs = self._strip_empty_runs(runs)
-                # Detect level from nesting (li inside li)
+                # Detect level from nesting depth by walking up the tree.
+                # A bare <li> in a top-level <ul>/<ol> → level 0.
+                # <li> nested inside another <li> (via a sub-<ul>/<ol>) → level 1, 2, …
                 level = 0
                 parent = li.getparent()
-                if parent is not None and parent.tag in ('ul', 'ol'):
-                    # Heuristic: depth-1 if parent is inside another li
+                while parent is not None and parent.tag in ('ul', 'ol'):
                     gp = parent.getparent()
                     if gp is not None and gp.tag == 'li':
-                        level = 1
+                        level += 1
+                        parent = gp.getparent()
+                    else:
+                        break
                 items.append({'runs': runs, 'level': level})
             if items:
                 blocks.append({'type': 'list', 'style': list_type, 'items': items})
@@ -2794,6 +2809,142 @@ class MdToOfficeConverter(BaseConverter):
         self.logger.error("No suitable tool (Word/LibreOffice) found for PDF conversion.")
         return None
 
+    def _find_headless_browser(self) -> Optional[str]:
+        """
+        定位本机可用的 Chromium 系浏览器（Edge/Chrome），用于无头打印 PDF。
+        这类浏览器几乎每台机器都有，因此 Word 和 LibreOffice 都缺失时
+        也能零额外安装地生成 PDF。
+        """
+        if platform.system() == "Windows":
+            local = os.environ.get("LOCALAPPDATA", "")
+            pf = os.environ.get("ProgramFiles", "")
+            pf86 = os.environ.get("ProgramFiles(x86)", "")
+            candidates = [
+                rf"{pf86}\Microsoft\Edge\Application\msedge.exe",
+                rf"{pf}\Microsoft\Edge\Application\msedge.exe",
+                rf"{local}\Google\Chrome\Application\chrome.exe",
+                rf"{pf}\Google\Chrome\Application\chrome.exe",
+                rf"{pf86}\Google\Chrome\Application\chrome.exe",
+            ]
+        elif platform.system() == "Darwin":
+            candidates = [
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            ]
+        else:
+            candidates = [
+                "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium", "/usr/bin/chromium-browser",
+                "/usr/bin/microsoft-edge",
+            ]
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return candidate
+        # 最后尝试 PATH（scoop/choco/homebrew 等非标准位置）
+        for name in ("msedge", "chrome", "chromium", "google-chrome"):
+            found = resolve_command(name)
+            if found:
+                return found
+        return None
+
+    # 无头浏览器打印 PDF 的页面样式，经 pandoc --include-in-header 注入
+    _BROWSER_PRINT_CSS = """<style>
+@page { size: A4; margin: 20mm 16mm; }
+html { -webkit-print-color-adjust: exact; }
+body { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif;
+       font-size: 11pt; line-height: 1.6; color: #222; }
+h1, h2, h3, h4 { line-height: 1.3; margin: 1.2em 0 0.6em; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 10pt; }
+th, td { border: 1px solid #888; padding: 5px 8px; text-align: left; }
+th { background: #f2f2f2; }
+code { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt;
+       background: #f4f4f4; padding: 1px 3px; border-radius: 3px; }
+pre { background: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }
+pre code { background: none; padding: 0; }
+img, svg { max-width: 100%; height: auto; }
+blockquote { border-left: 4px solid #ccc; margin: 1em 0; padding: 0.2em 1em; color: #555; }
+</style>
+"""
+
+    def _convert_docx_to_pdf_via_browser(self, docx_path: str, pdf_path: str) -> Optional[str]:
+        """
+        零安装兜底：DOCX --pandoc--> 自包含 HTML --Edge/Chrome 无头打印--> PDF。
+        在 Word 与 LibreOffice 都不可用时由 PDF 主流程调用；复用上游已处理好的
+        中间 DOCX（图表已转 PNG、表格边框已注入），因此内容与 Word 路径一致。
+        """
+        browser = self._find_headless_browser()
+        if not browser:
+            self.logger.warning("未找到 Chromium 系浏览器（Edge/Chrome），无头打印兜底不可用")
+            return None
+        if not command_available("pandoc"):
+            return None
+
+        import tempfile
+
+        final_pdf_path = Path(pdf_path)
+        header_file = Path(tempfile.gettempdir()) / f"mh_print_css_{os.getpid()}.html"
+        html_path = final_pdf_path.with_suffix(".print.html")
+        user_data_dir = ""
+        try:
+            header_file.write_text(self._BROWSER_PRINT_CSS, encoding="utf-8")
+
+            # DOCX → 自包含 HTML（图片内联为 data URI，打印时无外部依赖）
+            # 不传 --metadata title：避免 pandoc 生成标题块（Markdown 自带 # 标题，
+            # 且中间 DOCX 是临时文件名，会被误当作标题打印出来）
+            cmd = [
+                resolve_command("pandoc") or "pandoc", str(docx_path),
+                "-o", str(html_path),
+                "--standalone", "--embed-resources", "--quiet",
+                "--include-in-header", str(header_file),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+            if not html_path.exists():
+                self.logger.error("pandoc 未生成中间 HTML，无头打印兜底失败")
+                return None
+
+            # Chrome/Edge 无头打印；先试新 headless 参数，失败退回旧参数
+            user_data_dir = tempfile.mkdtemp(prefix="mh-browser-print-")
+            attempts = [
+                ["--headless=new", "--no-pdf-header-footer"],
+                ["--headless", "--print-to-pdf-no-header"],
+            ]
+            for extra_args in attempts:
+                if final_pdf_path.exists():
+                    final_pdf_path.unlink()
+                print_cmd = [
+                    browser, *extra_args,
+                    "--disable-gpu",
+                    f"--user-data-dir={user_data_dir}",
+                    "--run-all-compositor-stages-before-draw",
+                    "--virtual-time-budget=15000",
+                    f"--print-to-pdf={final_pdf_path}",
+                    html_path.as_uri(),
+                ]
+                try:
+                    subprocess.run(print_cmd, capture_output=True, timeout=180)
+                except subprocess.TimeoutExpired:
+                    self.logger.warning("无头浏览器打印超时，尝试下一种参数组合")
+                    continue
+                if final_pdf_path.exists() and final_pdf_path.stat().st_size > 500:
+                    self.logger.info(f"Successfully created PDF with headless browser ({browser}): {final_pdf_path}")
+                    return str(final_pdf_path)
+
+            self.logger.error(f"Headless browser PDF conversion failed: {browser}")
+            return None
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.logger.error(f"Browser PDF conversion failed: {e.stderr if hasattr(e, 'stderr') else e}")
+            return None
+        finally:
+            for p in (html_path, header_file):
+                try:
+                    if p.exists():
+                        p.unlink()
+                except OSError:
+                    pass
+            if user_data_dir:
+                shutil.rmtree(user_data_dir, ignore_errors=True)
+
     def _inject_table_borders(self, docx_path: str) -> None:
         """
         给 docx 里所有表格注入边框，避免 pandoc 默认无边框样式在
@@ -2846,7 +2997,16 @@ class MdToOfficeConverter(BaseConverter):
                                 )
                             except Exception as e:
                                 self.logger.warning(f"解析 document.xml 失败，跳过边框注入: {e}")
-                        zout.writestr(item, data)
+                        if self.reproducible:
+                            # Strip filesystem timestamps for reproducible output.
+                            # Fresh ZipInfo has date_time=(1980,1,1,0,0,0) — deterministic.
+                            clean_item = zipfile.ZipInfo(item.filename)
+                            clean_item.compress_type = item.compress_type
+                            clean_item.comment = item.comment
+                            clean_item.external_attr = item.external_attr
+                            zout.writestr(clean_item, data)
+                        else:
+                            zout.writestr(item, data)
             if touched:
                 shutil.move(tmp_path, docx_path)
                 self.logger.info(f"为 {touched} 个表格注入了边框")
@@ -2929,7 +3089,14 @@ class MdToOfficeConverter(BaseConverter):
                         data = zin.read(item.filename)
                         if item.filename == 'word/styles.xml':
                             data = styles_xml.encode('utf-8')
-                        zout.writestr(item, data)
+                        if self.reproducible:
+                            clean_item = zipfile.ZipInfo(item.filename)
+                            clean_item.compress_type = item.compress_type
+                            clean_item.comment = item.comment
+                            clean_item.external_attr = item.external_attr
+                            zout.writestr(clean_item, data)
+                        else:
+                            zout.writestr(item, data)
 
             shutil.move(tmp_path, docx_path)
             self.logger.info(f"注入了 {len(missing)} 个缺失的段落样式: {missing}")
@@ -2970,9 +3137,13 @@ class MdToOfficeConverter(BaseConverter):
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
             html_body = result.stdout
 
-            # Strip empty <style></style> blocks that pandoc may emit
-            # when the highlight theme produces no CSS rules
-            html_body = re.sub(r'<style>\s*</style>', '', html_body)
+            # Only strip empty <style></style> blocks when code highlighting is disabled.
+            # When a highlight theme is active, pandoc injects CSS rules (e.g. .sourceCode .kw)
+            # that colorize code blocks — stripping them would leave code completely unstyled.
+            # The html_theme.css stylesheet provides general .code/.pre styling for plain code.
+            theme_arg = self.code_highlight_theme or 'pygments'
+            if theme_arg.lower() in _HIGHLIGHT_OFF:
+                html_body = re.sub(r'<style>\s*</style>', '', html_body)
 
             heading_counts = {}
             def add_anchor_to_heading(match):
@@ -3051,12 +3222,16 @@ class MdToOfficeConverter(BaseConverter):
         typography (headings, tables, code, lists, blockquote, print) is
         loaded from templates/html_theme.css so it can be iterated on
         without touching Python code.
+
+        The HTML theme CSS is a complete GitHub-styled stylesheet covering:
+        tables (striped rows, hover, borders), headings, lists, code blocks,
+        blockquotes, links, images, horizontal rules, and print media query.
         """
         # Layout: sidebar TOC + content
         github_floating_toc = """
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fff; margin: 0; padding: 0; }
         .container { max-width: 1200px; margin: 20px auto; display: flex; flex-direction: row; align-items: flex-start; }
-        .toc-container { width: 250px; flex-shrink: 0; position: -webkit-sticky; position: sticky; top: 20px; height: calc(100vh - 40px); overflow-y: auto; padding-right: 20px; border-right: 1px solid #e1e4e8; }
+        .toc-container { width: 250px; flex-shrink: 0; position: sticky; top: 20px; height: calc(100vh - 40px); overflow-y: auto; padding-right: 20px; border-right: 1px solid #e1e4e8; }
         .content-container { flex-grow: 1; padding-left: 30px; max-width: 800px; }
         .toc ul { list-style: none; padding-left: 0; } .toc li a { color: #0366d6; text-decoration: none; display: block; padding: 4px 0; font-size: 14px; }
         .toc li a:hover { text-decoration: underline; }
@@ -3068,16 +3243,74 @@ class MdToOfficeConverter(BaseConverter):
         try:
             theme_css = theme_css_path.read_text(encoding='utf-8')
         except OSError:
-            # Fallback to minimal embedded styles
-            theme_css = (
-                "h1, h2, h3 { font-weight: 600; line-height: 1.25; }"
-                "table { border-collapse: collapse; }"
-                "th, td { border: 1px solid #ddd; padding: 8px; }"
-                "th { background-color: #f2f2f2; }"
-                "code { background-color: #f6f8fa; padding: 2px 4px; border-radius: 3px; }"
-                "pre { padding: 16px; background-color: #f6f8fa; border-radius: 3px; overflow: auto; }"
-                "blockquote { color: #6a737d; border-left: 4px solid #dfe2e5; padding: 0 1em; }"
-            )
+            # Fallback: complete GitHub-style theme matching html_theme.css
+            # This is used when the template file is unavailable.
+            theme_css = """
+/* Markdown Hub – HTML / EPUB theme CSS (complete GitHub-style fallback) */
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+                 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    color: #24292e;
+    background-color: #ffffff;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 2em 1.5em;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin-top: 1.5em; margin-bottom: 0.5em; }
+h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+h3 { font-size: 1.25em; }
+h4 { font-size: 1em; }
+
+/* Tables (GitHub-style) */
+table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; max-width: 100%; }
+thead { background-color: #f6f8fa; }
+th, td { padding: 6px 13px; border: 1px solid #d0d7de; }
+th { font-weight: 600; background-color: #f6f8fa; color: #24292e; }
+tbody tr:nth-child(even) { background-color: #f6f8fa; }
+tr:hover { background-color: #f0f3f6; }
+td { color: #24292e; }
+
+/* Lists */
+ul, ol { padding-left: 2em; margin-top: 0.5em; margin-bottom: 0.5em; }
+li { margin: 0.25em 0; }
+li > p { margin: 0.25em 0; }
+li > ul, li > ol { margin: 0.25em 0; }
+.task-list-item { list-style: none; margin-left: -1.5em; }
+.task-list-item input[type="checkbox"] { margin-right: 0.5em; }
+
+/* Code */
+code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; background-color: rgba(27,31,35,0.05); padding: 0.2em 0.4em; border-radius: 3px; font-size: 0.9em; }
+pre { background-color: #f6f8fa; border-radius: 6px; padding: 1em; overflow: auto; line-height: 1.45; }
+pre code { background-color: transparent; padding: 0; font-size: 0.95em; white-space: pre; }
+
+/* Blockquote */
+blockquote { margin: 1em 0; padding: 0 1em; color: #6a737d; border-left: 4px solid #dfe2e5; background-color: #fafbfc; }
+blockquote p { margin: 0.5em 0; }
+
+/* Links / Images */
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+img { max-width: 100%; height: auto; }
+
+/* Misc */
+hr { border: 0; border-top: 1px solid #e1e4e8; margin: 1.5em 0; }
+strong { font-weight: 600; }
+em { font-style: italic; }
+del { color: #6a737d; }
+
+/* TOC */
+nav.toc { background-color: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 0.75em 1em; margin-bottom: 2em; }
+nav.toc ul { padding-left: 1.5em; }
+nav.toc a { color: #24292e; }
+
+/* Print */
+@media print { body { padding: 0; max-width: none; } a { color: #000; } nav.toc { display: none; } }
+"""
 
         return github_floating_toc + "\n" + theme_css
 

@@ -1,7 +1,7 @@
 # Markdown Hub
 
 <!-- BADGES -->
-![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.6-blue)
+![Visual Studio Marketplace Version](https://img.shields.io/badge/version-0.3.7-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![VS Code Engine](https://img.shields.io/badge/VS%20Code-1.80+-37AAFF)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -55,19 +55,14 @@ Convert Markdown ↔ DOCX / PDF / HTML / PPTX, Office → Markdown, diagrams →
 
 ## 📸 What it looks like
 
-> Placeholder demos — replace by running `scripts/record-gif.sh media/<name> <duration>` (or use [ScreenToGif](https://www.screentogif.com/) on Windows). See `media/RECORDING.md` for the full workflow.
-
 **Convert Markdown to DOCX with one right-click:**
-
-![Markdown → DOCX demo](media/placeholder-md-to-docx.png)
+Right-click any `.md` file in the Explorer → **Convert to DOCX**. A notification tracks each stage (parsing → converting → generating), and the output `.docx` lands in the configured output folder with heading styles, bordered GFM tables, syntax-highlighted code blocks, and your template cover page.
 
 **Batch-convert a folder of Markdown files:**
-
-![Batch conversion demo](media/placeholder-batch.png)
+Right-click a folder → **Batch: Markdown → DOCX / PDF / HTML / PPTX / EPUB**. The output panel streams per-file progress and finishes with a summary — N succeeded, M failed, with the concrete failure reason for each file.
 
 **Markdown → PPTX with proper headings, lists, tables, and code blocks:**
-
-![Markdown → PPTX demo](media/placeholder-pptx.png)
+`#`/`##`/`###` map to sized slide titles, bold/italic/inline-code keep their run-level formatting, GFM tables become real PowerPoint tables, code blocks render on a full-width dark background, and lists & blockquotes keep their structure — no raw Markdown dumped onto slides.
 
 ---
 

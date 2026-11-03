@@ -192,4 +192,9 @@ Before each release:
 | Date | Phase | Status |
 |------|-------|--------|
 | 2026-07-29 | Phase A planning | Document drafted |
+| 2026-09-13 | Phase A: all 10 items | ✅ Done (G1-G11 fixes merged) |
+| 2026-09-13 | Phase B: B2 ZIP timestamps, B4 reproducible flag, B5 --reproducible CLI | ✅ Done |
+| 2026-09-13 | Phase B: B1 version manifest | ✅ Done (via --reproducible CLI output) |
+| 2026-09-13 | Phase B: B3 font embedding | ⏳ Deferred — requires fonttools + ZIP embedding |
+| 2026-09-13 | Phase C | ⏳ Pending user demand |
 | TBD | A1–A10 | Each item moved to "Done" when merged |

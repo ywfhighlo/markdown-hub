@@ -2,7 +2,7 @@
   "name": "markdown-hub",
   "displayName": "Markdown Hub",
   "description": "The Swiss Army Knife for Markdown conversion — Markdown ↔ DOCX/PDF/HTML/PPTX, Office → Markdown, diagrams → PNG, batch conversion.",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "author": "Yu Wenfeng <909188787@qq.com>",
   "publisher": "ywfhighlo",
   "license": "MIT",
@@ -339,7 +339,7 @@
         "markdown-hub.pythonPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to Python executable. Leave empty for automatic detection. The extension will automatically detect `python3` or `python` based on your system. You can also specify a full path like `/opt/homebrew/bin/python3`.",
+          "markdownDescription": "Path to Python executable. Leave empty for automatic detection: PATH → `py` launcher (Windows) → common install locations (`C:\\Users\\<you>\\AppData\\Local\\Programs\\Python\\Python312`, conda, Microsoft Store). You can also specify a full path like `C:\\Users\\<you>\\AppData\\Local\\Programs\\Python\\Python312\\python.exe` (Windows) or `/opt/homebrew/bin/python3` (macOS/Linux).",
           "scope": "window"
         },
         "markdown-hub.useDocxTemplate": {

@@ -15,6 +15,8 @@ import argparse
 import json
 import logging
 import base64
+import platform
+import subprocess
 from typing import Dict, Type
 
 # Add the current directory to the path so the converters package is importable.
@@ -24,6 +26,7 @@ from converters.base_converter import BaseConverter
 # Import the converter registry from __init__.py
 from converters import CONVERTER_REGISTRY
 
+
 def setup_logging():
     """Configure logging."""
     logging.basicConfig(
@@ -31,6 +34,7 @@ def setup_logging():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[logging.StreamHandler(sys.stderr)]
     )
+
 
 def get_converter(conversion_type: str, output_dir: str, **kwargs) -> BaseConverter:
     """Converter factory"""
@@ -46,12 +50,40 @@ def get_converter(conversion_type: str, output_dir: str, **kwargs) -> BaseConver
 
     return converter_class(output_dir, **kwargs)
 
+
+def _collect_version_info() -> dict:
+    """Collect versions of key dependencies for the --reproducible manifest."""
+    import importlib.metadata
+
+    def _version(pkg: str) -> str:
+        try:
+            return importlib.metadata.version(pkg)
+        except Exception:
+            return 'unknown'
+
+    info = {
+        'markdown-hub': _version('markdown-hub'),
+        'python': platform.python_version(),
+        'platform': platform.platform(),
+        'pandoc': None,
+    }
+    try:
+        result = subprocess.run(
+            ['pandoc', '--version'], capture_output=True, text=True, timeout=5
+        )
+        info['pandoc'] = result.stdout.split('\n', 1)[0].strip()
+    except Exception:
+        info['pandoc'] = 'not found'
+
+    return info
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Markdown Hub - document conversion tool",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('--conversion-type', required=True, 
+    parser.add_argument('--conversion-type', required=True,
                        choices=list(CONVERTER_REGISTRY.keys()),
                        help='Conversion type')
     parser.add_argument('--input-path', required=True,
@@ -76,19 +108,26 @@ def main():
                        help='Path to Poppler tools (for PDF OCR)')
     parser.add_argument('--tesseract-cmd',
                        help='Tesseract-OCR command or path (for PDF OCR)')
-    # SVG conversion parameters
     parser.add_argument('--svg-dpi', type=int, default=300,
                        help='DPI for SVG to PNG (default: 300)')
     parser.add_argument('--svg-output-width', type=int, default=800,
                        help='Output width for SVG to PNG (default: 800px)')
-    
+    parser.add_argument('--reproducible', action='store_true',
+                       help='Strip timestamps from DOCX/PPTX ZIP entries so output is '
+                            'byte-for-byte reproducible. Also surfaces a version manifest '
+                            'in the output JSON for auditability. '
+                            'Applies to md-to-docx, md-to-pdf, md-to-pptx.')
+
     args = parser.parse_args()
-    
+
     # Set log level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     else:
         setup_logging()
+
+    # Collect version manifest before any conversion runs
+    version_info = _collect_version_info() if args.reproducible else None
 
     # Build the progress reporter
     def report_progress(stage: str, percentage: int = None, details: dict = None):
@@ -100,8 +139,6 @@ def main():
             progress["percentage"] = percentage
         if details:
             progress["details"] = details
-
-        # Base64-encode so UTF-8 content passes through stdout safely.
         json_str = json.dumps(progress, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
@@ -127,9 +164,10 @@ def main():
             'code_highlight_theme': args.code_highlight_theme,
             'poppler_path': args.poppler_path,
             'tesseract_cmd': args.tesseract_cmd,
-            # SVG conversion parameters
             'svg_dpi': args.svg_dpi,
-            'svg_output_width': args.svg_output_width
+            'svg_output_width': args.svg_output_width,
+            # B5: reproducible output flag
+            'reproducible': args.reproducible,
         }
 
         # Extract output_format from conversion_type and pass it through.
@@ -157,23 +195,24 @@ def main():
             "success": success,
             "outputFiles": output_files
         }
-        # Base64-encode
+        if args.reproducible and version_info:
+            result['versionManifest'] = version_info
+
         json_str = json.dumps(result, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
 
     except Exception as e:
-        # Report the error
         error_result = {
             "type": "result",
             "success": False,
             "error": str(e)
         }
-        # Base64-encode
         json_str = json.dumps(error_result, ensure_ascii=False)
         encoded_str = base64.b64encode(json_str.encode('utf-8')).decode('ascii')
         print(encoded_str, flush=True)
         sys.exit(1)
+
 
 if __name__ == '__main__':
     main()
